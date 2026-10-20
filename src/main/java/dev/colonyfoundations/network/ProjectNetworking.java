@@ -42,9 +42,7 @@ public final class ProjectNetworking {
         int end = Math.min(total, start + BlueprintCatalogPayload.PAGE_SIZE);
         java.util.ArrayList<BlueprintCatalogPayload.Entry> entries = new java.util.ArrayList<>(end - start);
         for (var definition : definitions.subList(start, end)) {
-            String size = definition.sizeX() + " × " + definition.sizeY() + " × " + definition.sizeZ();
-            entries.add(new BlueprintCatalogPayload.Entry(
-                    definition.id(), definition.title(), size, definition.placements().size()));
+            entries.add(BlueprintCatalogPayload.Entry.fromDefinition(definition));
         }
         ServerPlayNetworking.send(player,
                 new BlueprintCatalogPayload(hallPos, page, totalPages, total, entries));
