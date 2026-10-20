@@ -3,6 +3,8 @@ package dev.colonyschematics.client;
 import dev.colonyschematics.ColonySchematics;
 import dev.colonyschematics.network.PlaceSchematicPayload;
 import dev.colonyschematics.network.PlaceStoredBlueprintPayload;
+import dev.colonyschematics.network.RequestSchematicCatalogPayload;
+import dev.colonyschematics.network.SchematicCatalogPayload;
 import dev.colonyschematics.network.SelectSchematicCornerPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -49,9 +51,20 @@ public final class ColonySchematicsClient implements ClientModInitializer {
             }
             return ActionResult.PASS;
         });
+
+        ClientPlayNetworking.registerGlobalReceiver(SchematicCatalogPayload.ID, (payload, context) ->
+                context.client().execute(() -> {
+                    if (MinecraftClient.getInstance().currentScreen instanceof SchematicCatalogScreen screen) {
+                        screen.updateCatalog(payload);
+                    }
+                }));
     }
 
     public static void requestPlacement(PlaceSchematicPayload payload) {
+        ClientPlayNetworking.send(payload);
+    }
+
+    public static void requestCatalog(RequestSchematicCatalogPayload payload) {
         ClientPlayNetworking.send(payload);
     }
 }
