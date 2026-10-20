@@ -84,9 +84,9 @@ public final class SchematicScanner {
                 Math.min(firstPos.getX(), clicked.getX()),
                 Math.min(firstPos.getY(), clicked.getY()),
                 Math.min(firstPos.getZ(), clicked.getZ()));
-        int sizeX = Math.abs(first.getX() - clicked.getX()) + 1;
-        int sizeY = Math.abs(first.getY() - clicked.getY()) + 1;
-        int sizeZ = Math.abs(first.getZ() - clicked.getZ()) + 1;
+        int sizeX = Math.abs(firstPos.getX() - clicked.getX()) + 1;
+        int sizeY = Math.abs(firstPos.getY() - clicked.getY()) + 1;
+        int sizeZ = Math.abs(firstPos.getZ() - clicked.getZ()) + 1;
         long volume = (long) sizeX * sizeY * sizeZ;
 
         if (sizeX > MAX_DIMENSION || sizeY > MAX_DIMENSION || sizeZ > MAX_DIMENSION || volume > MAX_VOLUME) {
