@@ -2,6 +2,7 @@ package dev.colonyschematics;
 
 import dev.colonyschematics.blueprint.SchematicLoader;
 import dev.colonyschematics.blueprint.SchematicScanner;
+import dev.colonyschematics.blueprint.SchematicTransform;
 import dev.colonyschematics.network.PlaceStoredBlueprintPayload;
 import dev.colonyschematics.network.SelectSchematicCornerPayload;
 import dev.colonyschematics.network.PlaceSchematicPayload;
@@ -305,20 +306,6 @@ public final class ColonySchematics implements ModInitializer {
                 passenger.ifPresent(tag -> transformEntityTree(tag, origin, sx, sz, turns, mirrorMode));
             }
         }
-    }
-
-    private static BlockPos transformBlockPos(BlockPos pos, int sx, int sz, int turns, int mirrorMode) {
-        int x = pos.getX();
-        int y = pos.getY();
-        int z = pos.getZ();
-        if (mirrorMode == 1) z = sz - 1 - z;
-        if (mirrorMode == 2) x = sx - 1 - x;
-        return switch (turns) {
-            case 1 -> new BlockPos(sz - 1 - z, y, x);
-            case 2 -> new BlockPos(sx - 1 - x, y, sz - 1 - z);
-            case 3 -> new BlockPos(z, y, sx - 1 - x);
-            default -> new BlockPos(x, y, z);
-        };
     }
 
     private static boolean insideWorld(ServerWorld world, BlockPos pos) {
