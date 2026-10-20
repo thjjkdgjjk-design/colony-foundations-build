@@ -262,11 +262,8 @@ public final class SchematicScanner {
             NbtCompound data = new NbtCompound();
             if (!entity.saveNbt(data)) continue;
 
-            NbtList position = new NbtList();
-            position.add(NbtDouble.of(entity.getX() - min.getX()));
-            position.add(NbtDouble.of(entity.getY() - min.getY()));
-            position.add(NbtDouble.of(entity.getZ() - min.getZ()));
-            data.put("Pos", position);
+            // Convert every saved passenger position as well as the root position.
+            makeEntityTreeRelative(data, min);
             data.put("TileX", NbtInt.of(entity.getBlockPos().getX() - min.getX()));
             data.put("TileY", NbtInt.of(entity.getBlockPos().getY() - min.getY()));
             data.put("TileZ", NbtInt.of(entity.getBlockPos().getZ() - min.getZ()));
@@ -276,5 +273,22 @@ public final class SchematicScanner {
             result.add(data);
         }
         return result;
+    }
+
+    private static void makeEntityTreeRelative(NbtCompound data, BlockPos origin) {
+        NbtList position = data.getList("Pos").orElse(null);
+        if (position != null && position.size() >= 3) {
+            NbtList relative = new NbtList();
+            relative.add(NbtDouble.of(position.getDouble(0).orElse(0.0) - origin.getX()));
+            relative.add(NbtDouble.of(position.getDouble(1).orElse(0.0) - origin.getY()));
+            relative.add(NbtDouble.of(position.getDouble(2).orElse(0.0) - origin.getZ()));
+            data.put("Pos", relative);
+        }
+        NbtList passengers = data.getList("Passengers").orElse(null);
+        if (passengers == null) return;
+        for (int i = 0; i < passengers.size(); i++) {
+            NbtCompound passenger = passengers.getCompound(i).orElse(null);
+            if (passenger != null) makeEntityTreeRelative(passenger, origin);
+        }
     }
 }

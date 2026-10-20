@@ -39,4 +39,28 @@ public final class SchematicTransform {
             default -> new BlockPos(x, y, z);
         };
     }
+
+    /**
+     * Transforms a continuous entity position local to a schematic. Entities use
+     * continuous coordinates, so the mirror plane is at size rather than size - 1.
+     */
+    public static net.minecraft.util.math.Vec3d transformEntityPosition(
+            net.minecraft.util.math.Vec3d position, int sizeX, int sizeZ,
+            int quarterTurns, int mirrorMode) {
+        if (sizeX < 1 || sizeZ < 1) {
+            throw new IllegalArgumentException("Schematic X/Z dimensions must be positive");
+        }
+        double x = position.x;
+        double y = position.y;
+        double z = position.z;
+        int mirror = Math.floorMod(mirrorMode, 3);
+        if (mirror == 1) z = sizeZ - z;
+        if (mirror == 2) x = sizeX - x;
+        return switch (Math.floorMod(quarterTurns, 4)) {
+            case 1 -> new net.minecraft.util.math.Vec3d(sizeZ - z, y, x);
+            case 2 -> new net.minecraft.util.math.Vec3d(sizeX - x, y, sizeZ - z);
+            case 3 -> new net.minecraft.util.math.Vec3d(z, y, sizeX - x);
+            default -> new net.minecraft.util.math.Vec3d(x, y, z);
+        };
+    }
 }

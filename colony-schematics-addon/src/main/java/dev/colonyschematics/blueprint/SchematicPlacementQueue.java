@@ -213,6 +213,20 @@ public final class SchematicPlacementQueue {
                     }
 
                     transformEntityTree(data, origin, schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
+                    if (!entityTreeInsideWorld(world, data)) {
+                        skippedPositions++;
+                        entityIndex++;
+                        used++;
+                        lastProgressTick = world.getTime();
+                        continue;
+                    }
+                    BlockPos unloadedPosition = firstUnloadedEntityPosition(world, data);
+                    if (unloadedPosition != null) {
+                        // Check root and passengers before instantiating the tree; retries do not recreate entities.
+                        notifyWaitingForChunk(server, unloadedPosition);
+                        return used;
+                    }
+
                     Entity entity = EntityType.loadEntityWithPassengers(data, world, SpawnReason.LOAD, Function.identity());
                     if (entity == null || !entity.getType().isSaveable()) {
                         skippedPositions++;
@@ -296,23 +310,13 @@ public final class SchematicPlacementQueue {
             double x = position.getDouble(0).orElse(0.0);
             double y = position.getDouble(1).orElse(0.0);
             double z = position.getDouble(2).orElse(0.0);
-            double mx = x;
-            double mz = z;
-            if (mirrorMode == 1) mz = sz - mz;
-            if (mirrorMode == 2) mx = sx - mx;
-            double rx;
-            double rz;
-            switch (turns) {
-                case 1 -> { rx = sz - mz; rz = mx; }
-                case 2 -> { rx = sx - mx; rz = sz - mz; }
-                case 3 -> { rx = mz; rz = sx - mx; }
-                default -> { rx = mx; rz = mz; }
-            }
-            NbtList transformed = new NbtList();
-            transformed.add(NbtDouble.of(origin.getX() + rx));
-            transformed.add(NbtDouble.of(origin.getY() + y));
-            transformed.add(NbtDouble.of(origin.getZ() + rz));
-            data.put("Pos", transformed);
+            net.minecraft.util.math.Vec3d transformed = SchematicTransform.transformEntityPosition(
+                    new net.minecraft.util.math.Vec3d(x, y, z), sx, sz, turns, mirrorMode);
+            NbtList result = new NbtList();
+            result.add(NbtDouble.of(origin.getX() + transformed.x));
+            result.add(NbtDouble.of(origin.getY() + transformed.y));
+            result.add(NbtDouble.of(origin.getZ() + transformed.z));
+            data.put("Pos", result);
         }
 
         NbtList rotation = data.getList("Rotation").orElse(null);
@@ -321,19 +325,59 @@ public final class SchematicPlacementQueue {
             if (mirrorMode == 1) yaw = -yaw;
             if (mirrorMode == 2) yaw = 180.0f - yaw;
             yaw += 90.0f * turns;
-            NbtList transformed = new NbtList();
-            transformed.add(NbtFloat.of(yaw));
-            transformed.add(NbtFloat.of(rotation.getFloat(1).orElse(0.0f)));
-            data.put("Rotation", transformed);
+            NbtList transformedRotation = new NbtList();
+            transformedRotation.add(NbtFloat.of(yaw));
+            transformedRotation.add(NbtFloat.of(rotation.getFloat(1).orElse(0.0f)));
+            data.put("Rotation", transformedRotation);
         }
 
         NbtList passengers = data.getList("Passengers").orElse(null);
         if (passengers != null) {
             for (int i = 0; i < passengers.size(); i++) {
-                Optional<NbtCompound> passenger = passengers.getCompound(i);
-                passenger.ifPresent(tag -> transformEntityTree(tag, origin, sx, sz, turns, mirrorMode));
+                NbtCompound passenger = passengers.getCompound(i).orElse(null);
+                if (passenger != null) transformEntityTree(passenger, origin, sx, sz, turns, mirrorMode);
             }
         }
+    }
+
+    private static boolean entityTreeInsideWorld(ServerWorld world, NbtCompound data) {
+        BlockPos position = entityBlockPos(data);
+        if (position == null || !insideWorld(world, position)) return false;
+        NbtList passengers = data.getList("Passengers").orElse(null);
+        if (passengers == null) return true;
+        for (int i = 0; i < passengers.size(); i++) {
+            NbtCompound passenger = passengers.getCompound(i).orElse(null);
+            if (passenger == null || !entityTreeInsideWorld(world, passenger)) return false;
+        }
+        return true;
+    }
+
+    private static BlockPos firstUnloadedEntityPosition(ServerWorld world, NbtCompound data) {
+        BlockPos position = entityBlockPos(data);
+        if (position != null && !world.isChunkLoaded(position)) return position;
+        NbtList passengers = data.getList("Passengers").orElse(null);
+        if (passengers == null) return null;
+        for (int i = 0; i < passengers.size(); i++) {
+            NbtCompound passenger = passengers.getCompound(i).orElse(null);
+            if (passenger != null) {
+                BlockPos unloaded = firstUnloadedEntityPosition(world, passenger);
+                if (unloaded != null) return unloaded;
+            }
+        }
+        return null;
+    }
+
+    private static BlockPos entityBlockPos(NbtCompound data) {
+        NbtList position = data.getList("Pos").orElse(null);
+        if (position == null || position.size() < 3) return null;
+        double x = position.getDouble(0).orElse(Double.NaN);
+        double y = position.getDouble(1).orElse(Double.NaN);
+        double z = position.getDouble(2).orElse(Double.NaN);
+        if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)
+                || x < Integer.MIN_VALUE || x > Integer.MAX_VALUE
+                || y < Integer.MIN_VALUE || y > Integer.MAX_VALUE
+                || z < Integer.MIN_VALUE || z > Integer.MAX_VALUE) return null;
+        return new BlockPos((int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z));
     }
 
     private static boolean insideWorld(ServerWorld world, BlockPos pos) {

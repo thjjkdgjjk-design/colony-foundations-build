@@ -65,4 +65,33 @@ class SchematicTransformTest {
         assertEquals(new BlockPos(-3, 0, -3),
                 SchematicTransform.transformBlockPos(new BlockPos(-3, 0, 5), 2, 3, 1, 0));
     }
+
+    @Test
+    void entityPositionsKeepFractionalOffsetsDuringMirroringAndRotation() {
+        var point = new net.minecraft.util.math.Vec3d(0.25, 7.5, 1.75);
+        assertEquals(new net.minecraft.util.math.Vec3d(0.25, 7.5, 0.25),
+                SchematicTransform.transformEntityPosition(point, 4, 2, 0, 1));
+        assertEquals(new net.minecraft.util.math.Vec3d(1.75, 7.5, 0.25),
+                SchematicTransform.transformEntityPosition(point, 4, 2, 1, 1));
+    }
+
+    @Test
+    void entityPositionTransformsStayWithinContinuousRotatedBounds() {
+        for (int sizeX = 1; sizeX <= 7; sizeX++) {
+            for (int sizeZ = 1; sizeZ <= 5; sizeZ++) {
+                for (int turns = 0; turns < 4; turns++) {
+                    for (int mirror = 0; mirror < 3; mirror++) {
+                        var input = new net.minecraft.util.math.Vec3d(sizeX * 0.37, 4.25, sizeZ * 0.61);
+                        var output = SchematicTransform.transformEntityPosition(input, sizeX, sizeZ, turns, mirror);
+                        int resultX = (turns % 2 == 0) ? sizeX : sizeZ;
+                        int resultZ = (turns % 2 == 0) ? sizeZ : sizeX;
+                        assertTrue(output.x >= 0.0 && output.x <= resultX);
+                        assertTrue(output.z >= 0.0 && output.z <= resultZ);
+                        assertEquals(input.y, output.y);
+                    }
+                }
+            }
+        }
+    }
+
 }
