@@ -7,6 +7,8 @@ import net.minecraft.block.CropBlock;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Item;
+import net.minecraft.util.Identifier;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
@@ -27,7 +29,8 @@ public final class CitizenJobController {
         Entity assigned = world.getEntity(hut.assignedCitizen().orElseThrow());
         if (!(assigned instanceof VillagerEntity worker) || worker.isRemoved()) return;
         if (!hut.isAssignedWorker(worker)) return;
-        if (worker.getCommandTags().stream().anyMatch(tag -> tag.startsWith(
+        if (worker.getCommandTags().contains(WorkerRoleRules.BUILDER_TAG)
+                || worker.getCommandTags().stream().anyMatch(tag -> tag.startsWith(
                 WorkerRoleRules.TOWN_HALL_ASSIGNMENT_PREFIX))) return;
 
         switch (hut.hutId()) {
@@ -58,7 +61,7 @@ public final class CitizenJobController {
         BlockState state = world.getBlockState(target);
         if (!(state.getBlock() instanceof CropBlock crop) || !crop.isMature(state)) return;
         String path = Registries.BLOCK.getId(state.getBlock()).getPath();
-        List<ItemStack> drops = FarmerJobRules.harvestItemsFor(path);
+        List<ItemStack> drops = resolveDrops(path);
         if (drops.isEmpty() || !hut.canStoreItems(drops)) return;
 
         // Replant in the same farmland cell. Inventory capacity is checked first,
@@ -66,6 +69,19 @@ public final class CitizenJobController {
         if (world.setBlockState(target, crop.getDefaultState(), net.minecraft.block.Block.NOTIFY_ALL)) {
             hut.storeItems(drops);
         }
+    }
+
+    private static List<ItemStack> resolveDrops(String cropPath) {
+        List<FarmerJobRules.Drop> dropRules = FarmerJobRules.harvestItemsFor(cropPath);
+        if (dropRules.isEmpty()) return List.of();
+        List<ItemStack> stacks = new java.util.ArrayList<>(dropRules.size());
+        for (FarmerJobRules.Drop drop : dropRules) {
+            Identifier id = Identifier.tryParse(drop.itemId());
+            if (id == null || !Registries.ITEM.containsId(id)) return List.of();
+            Item item = Registries.ITEM.get(id);
+            stacks.add(new ItemStack(item, drop.count()));
+        }
+        return List.copyOf(stacks);
     }
 
     private static BlockPos findNearestMatureCrop(ServerWorld world, BlockPos hutPos,
