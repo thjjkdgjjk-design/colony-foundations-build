@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "colony_schematics",
+  "version": "${version}",
+  "name": "Colony Schematics",
+  "description": "A standalone Fabric schematic catalog and creative-mode placer for bundled MineColonies citizen-house blueprints.",
+  "authors": ["Colony Schematics contributors", "LDTTeam — bundled MineColonies schematic assets"],
+  "license": "GPL-3.0-only",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.colonyschematics.ColonySchematics"],
+    "client": ["dev.colonyschematics.client.ColonySchematicsClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "1.21.5",
+    "java": ">=22",
+    "fabric-api": ">=0.119.5+1.21.5"
+  }
+}
