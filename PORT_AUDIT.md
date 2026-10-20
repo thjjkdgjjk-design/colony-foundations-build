@@ -229,3 +229,9 @@ CI compilation proves source compatibility with the compile environment only; it
 - Добавлен отдельный `BlueprintRegistry.getBuildDefinition`: он разрешает встроенный резерв только для `colony_foundations:cottage`; любой другой отсутствующий ID остаётся недоступным.
 - Активный заказ с отсутствующей схемой теперь приостанавливается с причиной на русском и сохраняет исходный ID/прогресс/запасы. Заказ также останавливается, если его сохранённый прогресс больше числа блоков текущей версии схемы. Повреждённый прогресс ограничивается глобальным лимитом, но не превращается автоматически в завершённый проект.
 - Добавлен unit-тест, что неизвестный ID схемы не подменяется коттеджем. CI подтвердит чистую lookup-логику; восстановление после реального перезапуска и смены datapack требует отдельного игрового сценария.
+
+
+### CI correction — missing Optional import
+
+- Run `39488387547` stopped during compilation because the new safe status rendering uses `Optional<BlueprintDefinition>` without importing `java.util.Optional`.
+- Added the import; no tests ran in that failed build because compilation stopped first.
