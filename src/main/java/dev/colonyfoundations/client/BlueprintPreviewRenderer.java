@@ -9,14 +9,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
+import org.joml.Matrix4f;
 
 /** Draws a lightweight 3D wireframe preview while the schematic catalog is open. */
 public final class BlueprintPreviewRenderer {
-    private static final int MAX_PREVIEW_BLOCKS = 5000;
+    private static final int MAX_PREVIEW_BLOCKS = 1800;
 
     private BlueprintPreviewRenderer() { }
 
@@ -48,18 +48,44 @@ public final class BlueprintPreviewRenderer {
             BlockState existing = context.world().getBlockState(target);
             boolean clear = (existing.isAir() || existing.isReplaceable()) && existing.getFluidState().isEmpty();
 
-            matrices.push();
-            matrices.translate(offset.getX(), offset.getY(), offset.getZ());
             if (clear) {
-                WorldRenderer.drawBox(matrices, lines, 0.025, 0.025, 0.025,
-                        0.975, 0.975, 0.975, 0.2f, 0.95f, 0.85f, 0.8f);
+                drawWireCube(matrices, lines, offset.getX(), offset.getY(), offset.getZ(),
+                        0.2f, 0.95f, 0.85f, 0.8f);
             } else {
-                WorldRenderer.drawBox(matrices, lines, 0.025, 0.025, 0.025,
-                        0.975, 0.975, 0.975, 1.0f, 0.22f, 0.18f, 0.9f);
+                drawWireCube(matrices, lines, offset.getX(), offset.getY(), offset.getZ(),
+                        1.0f, 0.22f, 0.18f, 0.9f);
             }
-            matrices.pop();
         }
         matrices.pop();
+    }
+
+    private static void drawWireCube(MatrixStack matrices, VertexConsumer consumer,
+                                     int x, int y, int z, float red, float green, float blue, float alpha) {
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        float x0 = x + 0.04f, y0 = y + 0.04f, z0 = z + 0.04f;
+        float x1 = x + 0.96f, y1 = y + 0.96f, z1 = z + 0.96f;
+
+        line(consumer, matrix, x0, y0, z0, x1, y0, z0, red, green, blue, alpha);
+        line(consumer, matrix, x1, y0, z0, x1, y0, z1, red, green, blue, alpha);
+        line(consumer, matrix, x1, y0, z1, x0, y0, z1, red, green, blue, alpha);
+        line(consumer, matrix, x0, y0, z1, x0, y0, z0, red, green, blue, alpha);
+
+        line(consumer, matrix, x0, y1, z0, x1, y1, z0, red, green, blue, alpha);
+        line(consumer, matrix, x1, y1, z0, x1, y1, z1, red, green, blue, alpha);
+        line(consumer, matrix, x1, y1, z1, x0, y1, z1, red, green, blue, alpha);
+        line(consumer, matrix, x0, y1, z1, x0, y1, z0, red, green, blue, alpha);
+
+        line(consumer, matrix, x0, y0, z0, x0, y1, z0, red, green, blue, alpha);
+        line(consumer, matrix, x1, y0, z0, x1, y1, z0, red, green, blue, alpha);
+        line(consumer, matrix, x1, y0, z1, x1, y1, z1, red, green, blue, alpha);
+        line(consumer, matrix, x0, y0, z1, x0, y1, z1, red, green, blue, alpha);
+    }
+
+    private static void line(VertexConsumer consumer, Matrix4f matrix,
+                             float x0, float y0, float z0, float x1, float y1, float z1,
+                             float red, float green, float blue, float alpha) {
+        consumer.vertex(matrix, x0, y0, z0).color(red, green, blue, alpha).normal(0.0f, 1.0f, 0.0f);
+        consumer.vertex(matrix, x1, y1, z1).color(red, green, blue, alpha).normal(0.0f, 1.0f, 0.0f);
     }
 
     private static BlockPos rotate(BlockPos source, BlueprintDefinition definition, int turns) {
