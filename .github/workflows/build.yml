@@ -37,9 +37,11 @@ jobs:
       - name: Prepare distributable JAR
         shell: bash
         run: |
+          ls -lah build/libs
           mkdir -p build/release
-          find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} build/release/ \\;
+          find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} build/release/ ';'
           test -n "$(find build/release -maxdepth 1 -type f -name '*.jar' -print -quit)"
+          ls -lah build/release
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
