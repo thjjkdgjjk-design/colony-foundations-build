@@ -28,9 +28,13 @@ class FarmerJobRulesTest {
     }
 
     @Test
-    void unsupportedCropsAreNotRemovedOrReplacedWithInventedDrops() {
-        assertTrue(FarmerJobRules.harvestItemsFor("pumpkin").isEmpty());
+    void melonAndPumpkinYieldDefinedProductsWhileUnknownCropsRemainUnsupported() {
+        assertEquals(List.of(new FarmerJobRules.Drop("minecraft:melon_slice", 4)),
+                FarmerJobRules.harvestItemsFor("melon"));
+        assertEquals(List.of(new FarmerJobRules.Drop("minecraft:pumpkin", 1)),
+                FarmerJobRules.harvestItemsFor("pumpkin"));
         assertTrue(FarmerJobRules.harvestItemsFor("sweet_berry_bush").isEmpty());
+        assertTrue(FarmerJobRules.harvestItemsFor("unknown_mod_crop").isEmpty());
     }
 
     @Test
