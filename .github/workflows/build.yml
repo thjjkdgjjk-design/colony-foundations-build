@@ -2,7 +2,7 @@ name: Build Colony Foundations
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
   workflow_dispatch:
   issues:
     types: [opened]
