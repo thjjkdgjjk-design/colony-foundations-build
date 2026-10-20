@@ -4,6 +4,7 @@ import dev.colonyfoundations.block.ModBlockEntities;
 import dev.colonyfoundations.block.ModBlocks;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.item.BuilderRecruitment;
+import dev.colonyfoundations.network.ProjectNetworking;
 import dev.colonyfoundations.item.ModItems;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
@@ -27,12 +28,13 @@ public final class ColonyFoundations implements ModInitializer {
         ModItems.initialize();
         BuilderRecruitment.initialize();
         BlueprintRegistry.register();
+        ProjectNetworking.registerServer();
 
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(ModBlocks.TOWN_HALL);
             entries.add(ModItems.BUILDER_CONTRACT);
         });
 
-        LOGGER.info("Colony Foundations initialized with data-pack blueprint support.");
+        LOGGER.info("Colony Foundations initialized with GUI construction and Structurize NBT import.");
     }
 }
