@@ -185,6 +185,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         player.sendMessage(Text.literal("[Колония] Заказано: " + definition.title() + ". Блоков: "
                 + definition.placements().size() + ". Поворот: " + (rotation * 90)
                 + "°. В склад ратуши добавлено предметов: " + moved + "."), false);
+        notifyCompatibilityWarnings(definition, player);
     }
 
     public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation,
@@ -198,6 +199,8 @@ public final class TownHallBlockEntity extends BlockEntity {
             int moved = depositMaterials(player);
             player.sendMessage(Text.literal("[Колония] В ратушу перенесено предметов: " + moved
                     + ". Запас стройки обновлён."), true);
+            BlueprintRegistry.getDefinition(requestedBlueprint)
+                    .ifPresent(selected -> notifyCompatibilityWarnings(selected, player));
             markDirty();
             return;
         }
@@ -220,6 +223,14 @@ public final class TownHallBlockEntity extends BlockEntity {
         markDirty();
         player.sendMessage(Text.literal("[Колония] Выбрана схема «" + definition.title()
                 + "». Перенесено предметов: " + moved + ". Чтобы начать стройку, нажми соответствующую кнопку."), true);
+        notifyCompatibilityWarnings(definition, player);
+    }
+
+    private static void notifyCompatibilityWarnings(BlueprintDefinition definition, PlayerEntity player) {
+        String summary = CompatibilityWarningSummary.summarize(definition.compatibilityWarnings(), 3);
+        if (!summary.isBlank()) {
+            player.sendMessage(Text.literal("[Колония] Предупреждения схемы: " + summary), true);
+        }
     }
 
     private int depositMaterials(PlayerEntity player) {

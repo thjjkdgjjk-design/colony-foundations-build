@@ -30,9 +30,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Loads Colony Foundations JSON blueprints and Structurize v1 compressed-NBT
@@ -119,6 +121,7 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
             if (blocks.size() > MAX_BLOCKS) throw new IllegalArgumentException("blueprint exceeds block safety limit");
 
             List<CottageBlueprint.Placement> placements = new ArrayList<>(blocks.size());
+            Set<String> compatibilityWarnings = new LinkedHashSet<>();
             int maxX = 0, maxY = 0, maxZ = 0;
             BlockPos primaryOffset = BlockPos.ORIGIN;
             if (root.has("anchor")) {
@@ -143,13 +146,15 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
                 int y = coordinates.get(1).getAsInt();
                 int z = coordinates.get(2).getAsInt();
                 validatePosition(x, y, z);
-                BlockState state = readBlockState(entry.get("block").getAsString(), entry.getAsJsonObject("properties"));
+                BlockState state = readBlockState(
+                        entry.get("block").getAsString(), entry.getAsJsonObject("properties"), compatibilityWarnings);
                 if (!state.isAir()) placements.add(new CottageBlueprint.Placement(new BlockPos(x, y, z), state));
                 maxX = Math.max(maxX, x);
                 maxY = Math.max(maxY, y);
                 maxZ = Math.max(maxZ, z);
             }
-            return new BlueprintDefinition(id, displayTitle(id), maxX + 1, maxY + 1, maxZ + 1, primaryOffset, placements);
+            return new BlueprintDefinition(id, displayTitle(id), maxX + 1, maxY + 1, maxZ + 1,
+                    primaryOffset, placements, List.copyOf(compatibilityWarnings));
         }
     }
 
@@ -176,11 +181,12 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         if (paletteTag.isEmpty() || paletteTag.size() > 65_535) {
             throw new IllegalArgumentException("palette is empty or too large");
         }
+        Set<String> compatibilityWarnings = new LinkedHashSet<>();
         List<BlockState> palette = new ArrayList<>(paletteTag.size());
         for (int i = 0; i < paletteTag.size(); i++) {
             NbtCompound entry = paletteTag.getCompound(i)
                     .orElseThrow(() -> new IllegalArgumentException("palette contains a non-compound entry"));
-            palette.add(readNbtBlockState(entry));
+            palette.add(readNbtBlockState(entry, compatibilityWarnings));
         }
 
         int[] packedBlocks = root.getIntArray("blocks").orElseThrow(
@@ -201,7 +207,8 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
                 }
             }
         }
-        return new BlueprintDefinition(id, displayTitle(id), sizeX, sizeY, sizeZ, readPrimaryOffset(root), placements);
+        return new BlueprintDefinition(id, displayTitle(id), sizeX, sizeY, sizeZ,
+                readPrimaryOffset(root), placements, List.copyOf(compatibilityWarnings));
     }
 
     private static BlockPos readPrimaryOffset(NbtCompound root) {
@@ -214,24 +221,32 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
                 offset.getInt("z").orElse(0));
     }
 
-    private static BlockState readNbtBlockState(NbtCompound tag) {
-        String name = tag.getString("Name").orElse("minecraft:air");
+    private static final int MAX_COMPATIBILITY_WARNINGS = 64;
+
+    private static BlockState readNbtBlockState(NbtCompound tag, Set<String> compatibilityWarnings) {
+        String name = tag.getString("Name")
+                .orElseThrow(() -> new IllegalArgumentException("palette block is missing Name"));
         NbtCompound properties = tag.getCompound("Properties").orElse(new NbtCompound());
         JsonObject propsJson = new JsonObject();
         for (String key : properties.getKeys()) {
             properties.getString(key).ifPresent(value -> propsJson.addProperty(key, value));
         }
-        return readBlockState(name, propsJson);
+        return readBlockState(name, propsJson, compatibilityWarnings);
     }
 
-    private static BlockState readBlockState(String rawId, JsonObject properties) {
+    private static BlockState readBlockState(
+            String rawId, JsonObject properties, Set<String> compatibilityWarnings) {
         Identifier blockId = Identifier.tryParse(rawId);
         if (blockId != null && SchematicSafetyRules.isUnsafeBlockId(blockId.toString())) {
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Служебный блок " + rawId + " запрещён и заменён воздухом");
             ColonyFoundations.LOGGER.warn("Небезопасный блок {} в схеме заменён воздухом", rawId);
             return Blocks.AIR.getDefaultState();
         }
         if (blockId == null || !Registries.BLOCK.containsId(blockId)) {
-            ColonyFoundations.LOGGER.warn("Blueprint references missing block {}; replacing it with air", rawId);
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Блок " + rawId + " отсутствует и заменён воздухом");
+            ColonyFoundations.LOGGER.warn("Отсутствующий блок {} в схеме заменён воздухом", rawId);
             return Blocks.AIR.getDefaultState();
         }
         Block block = Registries.BLOCK.get(blockId);
@@ -239,20 +254,36 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         if (properties == null) return state;
 
         for (Map.Entry<String, JsonElement> entry : properties.entrySet()) {
-            Property<?> property = state.getBlock().getStateManager().getProperty(entry.getKey());
+            String propertyName = entry.getKey();
+            String valueText = entry.getValue().getAsString();
+            Property<?> property = state.getBlock().getStateManager().getProperty(propertyName);
             if (property == null) {
-                ColonyFoundations.LOGGER.debug("Ignoring unsupported property {} on {}", entry.getKey(), blockId);
+                addCompatibilityWarning(compatibilityWarnings,
+                        "Свойство " + propertyName + " блока " + rawId + " не поддерживается");
+                ColonyFoundations.LOGGER.warn("Неизвестное свойство {} блока {}", propertyName, blockId);
                 continue;
             }
-            state = withProperty(state, property, entry.getValue().getAsString());
+            state = withProperty(state, property, valueText, compatibilityWarnings, rawId, propertyName);
         }
         return state;
     }
 
+    private static void addCompatibilityWarning(Set<String> warnings, String warning) {
+        if (warnings.size() < MAX_COMPATIBILITY_WARNINGS) warnings.add(warning);
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static BlockState withProperty(BlockState state, Property property, String valueText) {
+    private static BlockState withProperty(BlockState state, Property property, String valueText,
+                                           Set<String> compatibilityWarnings, String blockName, String propertyName) {
         Optional value = property.parse(valueText);
-        return value.isPresent() ? state.with(property, (Comparable) value.get()) : state;
+        if (value.isEmpty()) {
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Значение " + propertyName + "=" + valueText + " блока " + blockName + " не поддерживается");
+            ColonyFoundations.LOGGER.warn("Недопустимое значение свойства {}={} блока {}",
+                    propertyName, valueText, blockName);
+            return state;
+        }
+        return state.with(property, (Comparable) value.get());
     }
 
     private static void validatePosition(int x, int y, int z) {
