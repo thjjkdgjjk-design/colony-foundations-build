@@ -188,13 +188,13 @@ public final class ColonySchematics implements ModInitializer {
         ServerWorld world = player.getServerWorld();
         Direction facing = player.getHorizontalFacing();
         BlockPos requestedAnchor = player.getBlockPos().offset(facing, 4);
-        BlockPos anchorOffset = transformBlockPos(schematic.primaryOffset(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
+        BlockPos anchorOffset = SchematicTransform.transformBlockPos(schematic.primaryOffset(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
         BlockPos origin = requestedAnchor.subtract(anchorOffset);
 
         int placed = 0;
         int skipped = 0;
         for (SchematicLoader.BlockPlacement placement : schematic.blocks()) {
-            BlockPos local = transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
+            BlockPos local = SchematicTransform.transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
             BlockPos target = origin.add(local);
             if (!insideWorld(world, target)) {
                 skipped++;
@@ -210,7 +210,7 @@ public final class ColonySchematics implements ModInitializer {
         int blockEntitiesPlaced = 0;
         int blockEntitiesSkipped = 0;
         for (SchematicLoader.BlockEntityPlacement placement : schematic.blockEntities()) {
-            BlockPos local = transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
+            BlockPos local = SchematicTransform.transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
             BlockPos target = origin.add(local);
             if (!insideWorld(world, target)) {
                 blockEntitiesSkipped++;
