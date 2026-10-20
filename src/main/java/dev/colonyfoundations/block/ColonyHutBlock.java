@@ -66,9 +66,11 @@ public final class ColonyHutBlock extends BlockWithEntity {
 
         if (assignmentMode) {
             Box searchArea = new Box(pos).expand(12.0);
+            ColonyClaimState directory = ColonyClaimState.get(serverWorld);
             VillagerEntity worker = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
                             candidate -> !candidate.isRemoved()
-                                    && WorkerRoleRules.canAssignToHut(candidate.getCommandTags()))
+                                    && WorkerRoleRules.canAssignToHut(candidate.getCommandTags())
+                                    && !directory.hasActiveCitizenAssignment(candidate.getUuid()))
                     .stream()
                     .min(Comparator.comparingDouble(candidate -> candidate.squaredDistanceTo(
                             pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)))

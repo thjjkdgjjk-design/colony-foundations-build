@@ -1,6 +1,7 @@
 package dev.colonyfoundations.worker;
 
 import dev.colonyfoundations.block.ColonyClaimState;
+import dev.colonyfoundations.block.ColonyIdentityRules;
 import dev.colonyfoundations.block.ColonyHutBlockEntity;
 import dev.colonyfoundations.block.FarmFieldBlockEntity;
 import dev.colonyfoundations.block.WorkerRoleRules;
@@ -24,6 +25,7 @@ import net.minecraft.world.GameRules;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /** Bounded server-side job loops for assigned citizens; unloaded chunks are never force-loaded. */
 public final class CitizenJobController {
@@ -39,6 +41,17 @@ public final class CitizenJobController {
         if (worker.getCommandTags().contains(WorkerRoleRules.BUILDER_TAG)
                 || worker.getCommandTags().stream().anyMatch(tag -> tag.startsWith(
                 WorkerRoleRules.TOWN_HALL_ASSIGNMENT_PREFIX))) return;
+
+        ColonyClaimState directory = ColonyClaimState.get(world);
+        String dimensionId = world.getRegistryKey().getValue().toString();
+        ColonyClaimState.ClaimRecord colony = directory.findColonyAt(dimensionId, hutPos).orElse(null);
+        UUID colonyUuid = colony == null ? null
+                : ColonyIdentityRules.parseUuid(colony.colonyId()).orElse(null);
+        if (colonyUuid == null || !directory.registerCitizenAssignment(
+                worker.getUuid(), colonyUuid, world.getRegistryKey(), hutPos,
+                "colony_foundations:worker", "colony_foundations:" + hut.hutId(), worker.getBlockPos())) {
+            return;
+        }
 
         switch (hut.hutId()) {
             case "hut_farmer" -> tickFarmer(world, hutPos, hut, worker);

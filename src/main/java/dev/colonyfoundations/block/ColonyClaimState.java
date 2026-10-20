@@ -38,22 +38,55 @@ public final class ColonyClaimState extends PersistentState {
             Codec.INT.optionalFieldOf("colony_level", 1).forGetter(ClaimRecord::colonyLevel)
     ).apply(instance, ClaimRecord::new));
 
-    private static final Codec<ColonyClaimState> CODEC = Codec.unboundedMap(Codec.STRING, CLAIM_CODEC)
-            .fieldOf("claims").codec()
-            .xmap(ColonyClaimState::new, ColonyClaimState::snapshot);
+    private static final Codec<CitizenAssignment> CITIZEN_ASSIGNMENT_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.STRING.fieldOf("citizen_uuid").forGetter(CitizenAssignment::citizenUuid),
+            Codec.STRING.fieldOf("colony_id").forGetter(CitizenAssignment::colonyId),
+            Codec.STRING.fieldOf("dimension").forGetter(CitizenAssignment::dimension),
+            Codec.LONG.fieldOf("building_position").forGetter(CitizenAssignment::buildingPosition),
+            Codec.STRING.fieldOf("role_id").forGetter(CitizenAssignment::roleId),
+            Codec.STRING.fieldOf("job_id").forGetter(CitizenAssignment::jobId),
+            Codec.LONG.optionalFieldOf("last_known_position", 0L).forGetter(CitizenAssignment::lastKnownPosition),
+            Codec.STRING.optionalFieldOf("status", "active").forGetter(CitizenAssignment::status)
+    ).apply(instance, CitizenAssignment::new));
+
+    /** Optional "citizens" keeps existing PersistentState saves readable. */
+    private static final Codec<ColonyClaimState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.unboundedMap(Codec.STRING, CLAIM_CODEC)
+                    .optionalFieldOf("claims", Map.<String, ClaimRecord>of())
+                    .forGetter(ColonyClaimState::claimSnapshot),
+            Codec.unboundedMap(Codec.STRING, CITIZEN_ASSIGNMENT_CODEC)
+                    .optionalFieldOf("citizens", Map.<String, CitizenAssignment>of())
+                    .forGetter(ColonyClaimState::citizenSnapshot)
+    ).apply(instance, ColonyClaimState::new));
 
     private static final PersistentStateType<ColonyClaimState> TYPE =
             new PersistentStateType<>(STATE_ID, ColonyClaimState::new, CODEC, null);
 
     private final Map<String, ClaimRecord> claims = new LinkedHashMap<>();
     private final Map<String, Map<Long, List<ClaimRecord>>> claimsByDimensionChunk = new HashMap<>();
+    /** Server-authoritative citizen assignments; keyed by the persisted entity UUID. */
+    private final Map<String, CitizenAssignment> citizenAssignments = new LinkedHashMap<>();
 
     public ColonyClaimState() {
     }
 
+    /** Backwards-compatible constructor for older tests/data-loading callers. */
     ColonyClaimState(Map<String, ClaimRecord> savedClaims) {
+        this(savedClaims, Map.of());
+    }
+
+    ColonyClaimState(Map<String, ClaimRecord> savedClaims, Map<String, CitizenAssignment> savedCitizens) {
         if (savedClaims != null) claims.putAll(savedClaims);
+        if (savedCitizens != null) citizenAssignments.putAll(savedCitizens);
         rebuildIndex();
+    }
+
+    private Map<String, ClaimRecord> claimSnapshot() {
+        return Map.copyOf(claims);
+    }
+
+    private Map<String, CitizenAssignment> citizenSnapshot() {
+        return Map.copyOf(citizenAssignments);
     }
 
     public static ColonyClaimState get(ServerWorld world) {
@@ -112,7 +145,13 @@ public final class ColonyClaimState extends PersistentState {
 
     public void remove(RegistryKey<World> dimension, BlockPos position) {
         String key = recordKey(dimension.getValue().toString(), position.asLong());
-        if (claims.remove(key) != null) {
+        ClaimRecord removed = claims.remove(key);
+        if (removed != null) {
+            if (removed.hasIdentity()) {
+                citizenAssignments.replaceAll((citizen, assignment) ->
+                        assignment.isActive() && removed.colonyId().equals(assignment.colonyId())
+                                ? assignment.withStatus("released") : assignment);
+            }
             rebuildIndex();
             markDirty();
         }
@@ -134,6 +173,95 @@ public final class ColonyClaimState extends PersistentState {
                 .filter(ClaimRecord::hasIdentity)
                 .sorted(java.util.Comparator.comparing(ClaimRecord::colonyId))
                 .toList();
+    }
+
+    /**
+     * Find the unique identity owning a position. Ambiguous overlaps fail closed, which prevents
+     * assigning a worker to a colony chosen by iteration order.
+     */
+    public Optional<ClaimRecord> findColonyAt(String dimension, BlockPos target) {
+        if (dimension == null || target == null) return Optional.empty();
+        List<ClaimRecord> matches = claims.values().stream()
+                .filter(ClaimRecord::hasIdentity)
+                .filter(claim -> dimension.equals(claim.dimension()) && claim.contains(target))
+                .toList();
+        java.util.Set<String> ids = matches.stream().map(ClaimRecord::colonyId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (ids.size() != 1) return Optional.empty();
+        String onlyId = ids.iterator().next();
+        return matches.stream().filter(claim -> onlyId.equals(claim.colonyId())).findFirst();
+    }
+
+    public Optional<CitizenAssignment> citizenAssignment(UUID citizenUuid) {
+        if (citizenUuid == null) return Optional.empty();
+        return Optional.ofNullable(citizenAssignments.get(citizenUuid.toString()))
+                .filter(CitizenAssignment::isValid);
+    }
+
+    public boolean hasActiveCitizenAssignment(UUID citizenUuid) {
+        return citizenAssignment(citizenUuid).filter(CitizenAssignment::isActive).isPresent();
+    }
+
+    /**
+     * Register or refresh a citizen's single authoritative job assignment.
+     * Idempotent updates to the same building/job are accepted; a different active
+     * assignment must be explicitly released first.
+     */
+    public boolean registerCitizenAssignment(UUID citizenUuid, UUID colonyUuid,
+                                             RegistryKey<World> dimension, BlockPos buildingPosition,
+                                             String roleId, String jobId, BlockPos lastKnownPosition) {
+        if (citizenUuid == null || colonyUuid == null || dimension == null
+                || buildingPosition == null || lastKnownPosition == null) return false;
+
+        String dimensionId = dimension.getValue().toString();
+        Optional<ClaimRecord> colony = findColony(colonyUuid);
+        if (colony.isEmpty()
+                || !dimensionId.equals(colony.get().dimension())
+                || !colony.get().contains(buildingPosition)
+                || findColonyAt(dimensionId, buildingPosition)
+                    .filter(record -> colonyUuid.toString().equals(record.colonyId())).isEmpty()) {
+            return false;
+        }
+
+        CitizenAssignment requested = new CitizenAssignment(
+                citizenUuid.toString(), colonyUuid.toString(), dimensionId, buildingPosition.asLong(),
+                roleId, jobId, lastKnownPosition.asLong(), "active");
+        if (!requested.isValid()) return false;
+
+        String citizenKey = citizenUuid.toString();
+        CitizenAssignment existing = citizenAssignments.get(citizenKey);
+        if (!mayReplaceCitizenAssignment(existing, requested)) return false;
+        if (existing != null && existing.isActive() && existing.sameAssignment(requested)) {
+            if (existing.lastKnownPosition() != requested.lastKnownPosition()) {
+                citizenAssignments.put(citizenKey, requested);
+                markDirty();
+            }
+            return true;
+        }
+
+        citizenAssignments.put(citizenKey, requested);
+        markDirty();
+        return true;
+    }
+
+    /** Release only if the caller still owns this building assignment; keep a tombstone for audit/recovery. */
+    public boolean releaseCitizenAssignment(UUID citizenUuid, RegistryKey<World> dimension, BlockPos buildingPosition) {
+        if (citizenUuid == null || dimension == null || buildingPosition == null) return false;
+        String key = citizenUuid.toString();
+        CitizenAssignment existing = citizenAssignments.get(key);
+        if (existing == null || !existing.isActive()
+                || !existing.matchesBuilding(dimension.getValue().toString(), buildingPosition.asLong())) {
+            return false;
+        }
+        citizenAssignments.put(key, existing.withStatus("released"));
+        markDirty();
+        return true;
+    }
+
+    static boolean mayReplaceCitizenAssignment(CitizenAssignment existing, CitizenAssignment requested) {
+        if (requested == null || !requested.isValid()) return false;
+        return existing == null || !existing.isValid() || !existing.isActive()
+                || existing.sameAssignment(requested);
     }
 
     public List<ClaimRecord> nearbyClaims(String dimension, BlockPos target) {
@@ -169,10 +297,6 @@ public final class ColonyClaimState extends PersistentState {
         }
     }
 
-    private Map<String, ClaimRecord> snapshot() {
-        return Map.copyOf(claims);
-    }
-
     private void rebuildIndex() {
         claimsByDimensionChunk.clear();
         claims.entrySet().removeIf(entry -> !entry.getValue().isValid());
@@ -191,6 +315,58 @@ public final class ColonyClaimState extends PersistentState {
 
     private static long chunkKey(int x, int z) {
         return ((long) x & 0xFFFF_FFFFL) << 32 | ((long) z & 0xFFFF_FFFFL);
+    }
+
+    public record CitizenAssignment(String citizenUuid, String colonyId, String dimension,
+                                    long buildingPosition, String roleId, String jobId,
+                                    long lastKnownPosition, String status) {
+        public CitizenAssignment {
+            citizenUuid = citizenUuid == null ? "" : citizenUuid;
+            colonyId = colonyId == null ? "" : colonyId;
+            dimension = dimension == null ? "" : dimension;
+            roleId = roleId == null ? "" : roleId;
+            jobId = jobId == null ? "" : jobId;
+            status = status == null || status.isBlank() ? "active" : status;
+        }
+
+        public boolean isValid() {
+            return validUuid(citizenUuid) && validUuid(colonyId)
+                    && Identifier.tryParse(dimension) != null
+                    && Identifier.tryParse(roleId) != null
+                    && Identifier.tryParse(jobId) != null
+                    && ("active".equals(status) || "released".equals(status));
+        }
+
+        public boolean isActive() {
+            return isValid() && "active".equals(status);
+        }
+
+        public boolean sameAssignment(CitizenAssignment other) {
+            return other != null
+                    && citizenUuid.equals(other.citizenUuid)
+                    && colonyId.equals(other.colonyId)
+                    && dimension.equals(other.dimension)
+                    && buildingPosition == other.buildingPosition
+                    && roleId.equals(other.roleId)
+                    && jobId.equals(other.jobId);
+        }
+
+        public boolean matchesBuilding(String dimensionId, long position) {
+            return dimension.equals(dimensionId) && buildingPosition == position;
+        }
+
+        public CitizenAssignment withStatus(String newStatus) {
+            return new CitizenAssignment(citizenUuid, colonyId, dimension, buildingPosition,
+                    roleId, jobId, lastKnownPosition, newStatus);
+        }
+
+        private static boolean validUuid(String value) {
+            try {
+                return value != null && !value.isBlank() && UUID.fromString(value) != null;
+            } catch (IllegalArgumentException exception) {
+                return false;
+            }
+        }
     }
 
     public record ClaimRecord(String dimension, long position, String ownerUuid, List<String> members,

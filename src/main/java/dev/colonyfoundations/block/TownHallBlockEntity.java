@@ -420,6 +420,8 @@ public final class TownHallBlockEntity extends BlockEntity {
                 if (!builder.getCommandTags().contains(assignmentTag)) builder.addCommandTag(assignmentTag);
             } else if (hall.lastBuilderPosition == null || serverWorld.isChunkLoaded(hall.lastBuilderPosition)) {
                 // Its last known chunk is loaded but the UUID is gone: release the stale assignment.
+                ColonyClaimState.get(serverWorld).releaseCitizenAssignment(
+                        hall.assignedBuilderUuid, serverWorld.getRegistryKey(), pos);
                 hall.assignedBuilderUuid = null;
                 hall.lastBuilderPosition = null;
                 hall.resetNavigationDiagnostics();
@@ -454,6 +456,15 @@ public final class TownHallBlockEntity extends BlockEntity {
             hall.recordBuilderPosition(builder);
             hall.resetNavigationDiagnostics();
             hall.markDirty();
+        }
+
+        // Reconcile/migrate the saved builder into the durable directory before performing work.
+        if (hall.colonyUuid == null || !ColonyClaimState.get(serverWorld).registerCitizenAssignment(
+                builder.getUuid(), hall.colonyUuid, serverWorld.getRegistryKey(), pos,
+                "colony_foundations:builder", "colony_foundations:builder", builder.getBlockPos())) {
+            hall.pauseForPlacementIssue(serverWorld, pos, builder.getBlockPos(),
+                    "Строитель уже назначен на другую работу или не связан с единственной колонией");
+            return;
         }
 
         BlockPos site = pos.add(hall.siteOffsetX, -1, hall.siteOffsetZ);
@@ -659,7 +670,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     private void finish(ServerWorld world, VillagerEntity builder) {
         projectActive = false;
         projectComplete = true;
-        if (builder != null) builder.removeCommandTag(assignmentTag(world, pos));
+        if (builder != null) {
+            builder.removeCommandTag(assignmentTag(world, pos));
+            ColonyClaimState.get(world).releaseCitizenAssignment(builder.getUuid(), world.getRegistryKey(), pos);
+        }
         assignedBuilderUuid = null;
         lastBuilderPosition = null;
         resetNavigationDiagnostics();

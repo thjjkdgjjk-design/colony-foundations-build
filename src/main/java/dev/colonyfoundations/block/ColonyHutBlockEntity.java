@@ -444,7 +444,19 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         if (!WorkerRoleRules.canAssignToHut(villager.getCommandTags())) return false;
         String ownAssignmentTag = assignmentTag();
 
+        ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        String dimensionId = serverWorld.getRegistryKey().getValue().toString();
+        ColonyClaimState.ClaimRecord colony = directory.findColonyAt(dimensionId, pos).orElse(null);
+        UUID colonyUuid = colony == null ? null
+                : ColonyIdentityRules.parseUuid(colony.colonyId()).orElse(null);
+        if (colonyUuid == null || !directory.registerCitizenAssignment(
+                villager.getUuid(), colonyUuid, serverWorld.getRegistryKey(), pos,
+                "colony_foundations:worker", "colony_foundations:" + hutId(), villager.getBlockPos())) {
+            return false;
+        }
+
         if (assignedCitizen != null && !assignedCitizen.equals(villager.getUuid())) {
+            directory.releaseCitizenAssignment(assignedCitizen, serverWorld.getRegistryKey(), pos);
             Entity previous = serverWorld.getEntity(assignedCitizen);
             if (previous instanceof VillagerEntity oldVillager) {
                 oldVillager.removeCommandTag(ownAssignmentTag);
