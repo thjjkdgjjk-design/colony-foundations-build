@@ -62,15 +62,15 @@ The MineColonies Java source uses GPL-3.0, while its own resources directory has
 
 The separate colony-schematics-addon is the active first workstream: making the Structurize schematic format usable on Fabric and enabling the full blueprint tree through a server datapack. The datapack output stays separate from the public JAR because the original MineColonies resource tree carries a separate “All Rights Reserved” notice; only the user who supplied the archive is receiving this generated pack here. Source-code GPL terms are not assumed to override that separate resource notice.
 
-## Corrective tranche — 2026-10-20 (pending CI)
+## Corrective tranche — 2026-10-20 (CI compile verified; gameplay testing pending)
 
 - Both mods declare `java >=21`; Gradle continues using a JDK 22 toolchain and `options.release = 21`. This keeps the developer JDK requested by the project without preventing Java 21 clients from satisfying Minecraft 1.21.5's runtime requirement.
 - Town Hall construction no longer silently advances past a solid obstruction. The active work order pauses and a reason/target coordinate is persisted and displayed; the player can clear the obstruction and resume.
 - Before placement, the builder checks dimension build height, world border, and chunk-loaded state without forcing a distant chunk to load. An existing matching target block counts as recovered progress. Material is deducted only after `setBlockState` reports success.
 - The separate schematic catalog's user-facing strings were moved to English/Russian language keys and the built-in style labels were localized.
-- These source changes are not considered verified until CI completes. No in-game client/server test has been run.
-
-- Russian job labels and worker-assignment messages now use language keys and translate building names rather than exposing registry IDs; this code is pending CI validation.
+- CI runs #136, #137, #138 and #140 succeeded. Run #139 caught a missing call-site update during transform extraction; run #140 compiled both JARs and ran the new schematic geometry unit tests successfully. Run #138 compiled the worker-name localization update.
+- The extracted coordinate-transform utility has automated tests over X/Z dimensions 1–7 by 1–5, all 4 rotations and 3 mirror modes. Tests cover bounds, unique cell mapping, normalized parameters, invalid dimensions and anchors outside the schematic bounds.
+- The Java 1.21.5 API fix, worker UUID/path recovery and localized worker assignment strings have compile-level CI verification. The in-game client/server behaviors remain untested here.
 
 ## Verification statement
 

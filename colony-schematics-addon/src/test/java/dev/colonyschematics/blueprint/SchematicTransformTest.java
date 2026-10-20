@@ -59,12 +59,10 @@ class SchematicTransformTest {
     }
 
     @Test
-    void rejectsInvalidDimensionsAndOutOfRangeSourceCoordinates() {
+    void rejectsInvalidDimensionsAndSupportsExternalAnchorOffsets() {
         assertThrows(IllegalArgumentException.class,
                 () -> SchematicTransform.transformBlockPos(BlockPos.ORIGIN, 0, 1, 0, 0));
-        assertThrows(IllegalArgumentException.class,
-                () -> SchematicTransform.transformBlockPos(new BlockPos(-1, 0, 0), 2, 2, 0, 0));
-        assertThrows(IllegalArgumentException.class,
-                () -> SchematicTransform.transformBlockPos(new BlockPos(0, 0, 2), 2, 2, 0, 0));
+        assertEquals(new BlockPos(-3, 0, -3),
+                SchematicTransform.transformBlockPos(new BlockPos(-3, 0, 5), 2, 3, 1, 0));
     }
 }

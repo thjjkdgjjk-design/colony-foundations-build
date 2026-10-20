@@ -26,10 +26,9 @@ public final class SchematicTransform {
         int x = position.getX();
         int y = position.getY();
         int z = position.getZ();
-        if (x < 0 || x >= sizeX || z < 0 || z >= sizeZ) {
-            throw new IllegalArgumentException("Position lies outside schematic X/Z dimensions: " + position);
-        }
 
+        // The same function transforms both block cells and primary anchors; anchors
+        // may intentionally sit just outside the source bounding box.
         int mirror = Math.floorMod(mirrorMode, 3);
         if (mirror == 1) z = sizeZ - 1 - z;
         if (mirror == 2) x = sizeX - 1 - x;
