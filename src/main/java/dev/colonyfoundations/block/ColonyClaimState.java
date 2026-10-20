@@ -206,6 +206,11 @@ public final class ColonyClaimState extends PersistentState {
             colonyLevel = Math.max(1, colonyLevel);
         }
 
+        /** Preserve the original four-field record constructor for existing tests and internal callers. */
+        public ClaimRecord(String dimension, long position, String ownerUuid, List<String> members) {
+            this(dimension, position, ownerUuid, members, "", "", "", 1);
+        }
+
         public boolean hasIdentity() {
             return ColonyIdentityRules.parseUuid(colonyId).isPresent() && isValid();
         }
