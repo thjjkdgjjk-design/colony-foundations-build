@@ -2,6 +2,8 @@ package dev.colonyfoundations.block;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.inventory.Inventories;
@@ -10,6 +12,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.NamedScreenHandlerFactory;
@@ -29,6 +32,8 @@ import java.util.UUID;
  * in-game inventory, building level, and citizen assignment field.
  */
 public final class ColonyHutBlockEntity extends BlockEntity implements Inventory, NamedScreenHandlerFactory {
+    public static final String HUT_ASSIGNED_TAG_PREFIX = "colony_foundations_hut_assigned_";
+    public static final String HUT_WORKER_TAG = "colony_foundations_hut_worker";
     private final DefaultedList<ItemStack> inventory = DefaultedList.ofSize(18, ItemStack.EMPTY);
     private int buildingLevel = 1;
     private UUID assignedCitizen;
@@ -58,6 +63,54 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         if (citizenUuid != null && citizenUuid.equals(assignedCitizen)) return;
         assignedCitizen = citizenUuid;
         markDirty();
+    }
+
+    public boolean assignWorker(ServerWorld serverWorld, VillagerEntity villager) {
+        if (world != serverWorld || villager.isRemoved()) return false;
+        String ownAssignmentTag = assignmentTag();
+
+        boolean assignedElsewhere = villager.getCommandTags().stream()
+                .anyMatch(tag -> tag.startsWith(HUT_ASSIGNED_TAG_PREFIX) && !tag.equals(ownAssignmentTag));
+        if (assignedElsewhere) return false;
+
+        if (assignedCitizen != null && !assignedCitizen.equals(villager.getUuid())) {
+            Entity previous = serverWorld.getEntity(assignedCitizen);
+            if (previous instanceof VillagerEntity oldVillager) {
+                oldVillager.removeCommandTag(ownAssignmentTag);
+                oldVillager.removeCommandTag(HUT_WORKER_TAG);
+                removeJobTags(oldVillager);
+            }
+        }
+
+        removeJobTags(villager);
+        villager.addCommandTag(HUT_WORKER_TAG);
+        villager.addCommandTag(ownAssignmentTag);
+        villager.addCommandTag("colony_foundations_job_" + hutId());
+        villager.setCustomName(Text.literal(displayJobName(hutId())));
+        villager.setCustomNameVisible(true);
+
+        assignedCitizen = villager.getUuid();
+        markDirty();
+        return true;
+    }
+
+    private String assignmentTag() {
+        return HUT_ASSIGNED_TAG_PREFIX + Long.toUnsignedString(pos.asLong(), 36);
+    }
+
+    private static void removeJobTags(VillagerEntity villager) {
+        villager.getCommandTags().stream()
+                .filter(tag -> tag.startsWith("colony_foundations_job_"))
+                .toList()
+                .forEach(villager::removeCommandTag);
+    }
+
+    private static String displayJobName(String hutId) {
+        String raw = hutId.startsWith("hut_") ? hutId.substring(4) : hutId;
+        return java.util.Arrays.stream(raw.split("_"))
+                .filter(part -> !part.isBlank())
+                .map(part -> part.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + part.substring(1))
+                .collect(java.util.stream.Collectors.joining(" "));
     }
 
     public boolean enabled() {
