@@ -56,7 +56,7 @@ These counts are source scans, not an estimate of the complete number of require
 
 ## Resource licensing note
 
-The MineColonies Java source uses GPL-3.0, while its own resources directory has a separate assets/minecolonies/LICENSE stating “All Rights Reserved”. The public schematic repository's README documents its intended use for MineColonies but does not itself establish a broad redistribution grant in the revision reviewed. Do not treat source-code GPL as a blanket license for textures, sounds, GUI art, models or all schematic assets. Replacement art or an explicit asset license/permission is required before claiming that the entire original visual content has been ported and redistributed.
+The MineColonies Java source uses GPL-3.0, while its own resources directory has a separate assets/minecolonies/LICENSE stating “All Rights Reserved”. The current default branch of the public schematic repository exposes a GPL-3.0 license file, but the exact revision pinned by CI (`ae86ba500d3172220669657e0102861fa8b7f3be`) has no root `LICENSE` file in its Git tree, and its README alone does not establish a broad reuse grant. Confirm that the license applies to the pinned NBT files before relying on it for redistribution. Do not treat source-code GPL as a blanket license for textures, sounds, GUI art, models or the separate MineColonies resource tree, which contains an `All Rights Reserved` notice.
 
 ## Current incremental delivery (2026-10-20)
 

@@ -5,8 +5,8 @@
 - Upstream project: https://github.com/ldtteam/minecolonies-schematics
 - Pinned source revision: https://github.com/ldtteam/minecolonies-schematics/commit/ae86ba500d3172220669657e0102861fa8b7f3be
 - Currently fetched file set: 20 citizen-house NBT schematics (birch, darkoak, defaultwooden, stone; tiers 1–5).
-- The upstream repository README describes these files as schematics for use in MineColonies. The pinned revision reviewed does not provide an explicit broad reuse license in the README.
-- These assets are not assumed to be GPL merely because the MineColonies Java source is GPL. Please obtain or verify a suitable asset license before redistributing the schematics outside their intended context.
+- The repository's current default branch exposes a GPL-3.0 license file, but the exact pinned revision used by CI (`ae86ba500d3172220669657e0102861fa8b7f3be`) has no root `LICENSE` file in its Git tree; its README describes the repository's intended use but does not itself provide an explicit broad reuse grant.
+- Do not claim that the pinned NBT assets are covered by GPL solely because the current upstream default branch or the MineColonies Java source is GPL. Confirm that the upstream license applies to the pinned revision/assets, or update the pin to a clearly licensed revision and verify the files before relying on that permission.
 
 ## Original MineColonies resources
 
