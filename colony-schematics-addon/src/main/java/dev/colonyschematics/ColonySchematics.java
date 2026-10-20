@@ -78,7 +78,7 @@ public final class ColonySchematics implements ModInitializer {
                 }
 
                 BlockPos target = origin.add(x, local.getY(), z);
-                if (target.getY() < world.getBottomY() || target.getY() >= world.getTopY()
+                if (target.getY() < world.getBottomY() || target.getY() >= world.getBottomY() + world.getDimension().height()
                         || !world.getWorldBorder().contains(target)) {
                     continue;
                 }
