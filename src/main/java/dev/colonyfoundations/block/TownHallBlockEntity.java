@@ -3,6 +3,7 @@ package dev.colonyfoundations.block;
 import dev.colonyfoundations.ColonyFoundations;
 import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
+import dev.colonyfoundations.blueprint.CompatibilityWarningSummary;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;

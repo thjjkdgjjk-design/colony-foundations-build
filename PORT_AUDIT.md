@@ -189,3 +189,9 @@ CI compilation proves source compatibility with the compile environment only; it
 - Root-парсер JSON и Structurize NBT собирает предупреждения по отсутствующим блокам, запрещённым служебным блокам, неизвестным свойствам и недопустимым значениям. Отсутствующий `Name` в записи палитры теперь делает схему ошибочной вместо молчаливого превращения в воздух.
 - При выборе/запуске заказа игрок получает русское предупреждение с первыми тремя несовместимостями и числом оставшихся; уникальных предупреждений собирается не более 64.
 - Добавлены unit-тесты форматирования краткого сообщения. Они не заменяют запуск Minecraft и не проверяют полную загрузку настоящего NBT через реестры игры.
+
+
+### CI correction — compatibility-warning import
+
+- CI run `39487076548` caught a missing import for `CompatibilityWarningSummary` in `TownHallBlockEntity`; no gameplay or test assertion failed because compilation stopped first.
+- Added the missing import. The next run must confirm compilation and both test suites before the warning feature can be treated as CI-verified.
