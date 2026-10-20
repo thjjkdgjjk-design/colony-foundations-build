@@ -1,5 +1,6 @@
 package dev.colonyfoundations.block;
 
+import com.mojang.serialization.MapCodec;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockWithEntity;
@@ -13,8 +14,15 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
 public final class TownHallBlock extends BlockWithEntity {
+    public static final MapCodec<TownHallBlock> CODEC = createCodec(TownHallBlock::new);
+
     public TownHallBlock(Settings settings) {
         super(settings);
+    }
+
+    @Override
+    protected MapCodec<? extends TownHallBlock> getCodec() {
+        return CODEC;
     }
 
     @Override
