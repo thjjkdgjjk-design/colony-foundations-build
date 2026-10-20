@@ -110,7 +110,7 @@ public final class ColonySchematics implements ModInitializer {
             entries.add(new SchematicCatalogPayload.Entry(item.id(), item.title()));
         }
 
-        ServerPlayNetworking.send(player, new SchematicCatalogPayload(page, query, totalPages, entries));
+        ServerPlayNetworking.send(player, new SchematicCatalogPayload(page, query, totalPages, total, entries));
     }
 
     private static void placeSchematic(ServerPlayerEntity player, PlaceSchematicPayload payload) {
