@@ -50,7 +50,10 @@ public final class CitizenJobController {
         double distance = worker.squaredDistanceTo(
                 target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
         if (distance > 9.0) {
-            if (worker.getNavigation().isIdle()) {
+            // A path can remain "active" while the villager is blocked. Periodically
+            // request a fresh route so one failed path cannot stall the job forever.
+            if (WorkerNavigationRules.shouldRequestPath(
+                    worker.getNavigation().isIdle(), world.getTime(), worker.getId())) {
                 worker.getNavigation().startMovingTo(
                         target.getX() + 0.5, target.getY(), target.getZ() + 0.5, 1.0);
             }
