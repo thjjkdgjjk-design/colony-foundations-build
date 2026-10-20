@@ -1,0 +1,59 @@
+name: Build Colony Foundations
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '22'
+          cache: gradle
+
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12'
+
+      - name: Build mod JAR
+        run: gradle --no-daemon clean build
+
+      - name: Prepare distributable JAR
+        shell: bash
+        run: |
+          mkdir -p build/release
+          find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} build/release/ \;
+          test -n "$(find build/release -maxdepth 1 -type f -name '*.jar' -print -quit)"
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: colony-foundations-fabric-1.21.5-java22
+          path: build/release/*.jar
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish downloadable test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-build-${{ github.run_number }}-${{ github.run_attempt }}
+          name: "Colony Foundations test build ${{ github.run_number }}"
+          prerelease: true
+          draft: false
+          body: |
+            Automatically built experimental prototype for Minecraft 1.21.5 / Fabric / Java 22.
+            This is not a complete MineColonies port. Test only on a copy of a world.
+          files: build/release/*.jar
