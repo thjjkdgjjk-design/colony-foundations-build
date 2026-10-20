@@ -90,10 +90,12 @@ public final class BlueprintCatalogScreen extends Screen {
             close();
         }).dimensions(left + 212, top + 153, 214, 20).build());
 
+        addDrawableChild(ButtonWidget.builder(Text.literal("Снабдить из инвентаря"), button -> send(3))
+                .dimensions(left + 10, top + 179, 140, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Пауза / продолжить"), button -> send(2))
-                .dimensions(left + 212, top + 179, 104, 20).build());
+                .dimensions(left + 156, top + 179, 140, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
-                .dimensions(left + 322, top + 179, 104, 20).build());
+                .dimensions(left + 302, top + 179, 124, 20).build());
     }
 
     private void send(int action) {
@@ -185,7 +187,7 @@ public final class BlueprintCatalogScreen extends Screen {
         }
         List<Map.Entry<Identifier, Integer>> ordered = new ArrayList<>(counts.entrySet());
         ordered.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-        context.drawTextWithShadow(textRenderer, Text.literal("Основные материалы:"), x, y, 0xFFFFFFFF);
+        context.drawTextWithShadow(textRenderer, Text.literal("Нужно всего (по схеме):"), x, y, 0xFFFFFFFF);
         int line = 0;
         for (Map.Entry<Identifier, Integer> item : ordered) {
             if (line >= 4) break;
