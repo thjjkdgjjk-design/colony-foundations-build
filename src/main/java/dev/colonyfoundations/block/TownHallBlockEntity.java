@@ -6,23 +6,29 @@ import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
-import net.minecraft.util.BlockRotation;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
+import net.minecraft.util.BlockRotation;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-/** Stores a selected construction schematic and advances it as a villager builder works. */
 public final class TownHallBlockEntity extends BlockEntity {
     public static final String BUILDER_TAG = "colony_foundations_builder";
     private static final String ASSIGNED_TAG_PREFIX = "colony_foundations_assigned_";
@@ -31,8 +37,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     private boolean projectComplete;
     private int progress;
     private int skippedObstructions;
+    private long lastMissingResourceNotification = Long.MIN_VALUE;
     private Identifier blueprintId = Identifier.of(ColonyFoundations.MOD_ID, "cottage");
     private int rotation;
+    private final Map<Identifier, Integer> resourceStock = new HashMap<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TOWN_HALL, pos, state);
@@ -44,32 +52,109 @@ public final class TownHallBlockEntity extends BlockEntity {
             player.sendMessage(Text.literal("[Colony] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
             return;
         }
-        blueprintId = newBlueprintId;
-        rotation = Math.floorMod(quarterTurns, 4);
-        progress = 0;
-        skippedObstructions = 0;
-        projectComplete = false;
-        projectActive = true;
+        if (projectActive && !blueprintId.equals(newBlueprintId)) {
+            player.sendMessage(Text.literal("[Colony] Сначала заверши или приостанови текущий проект."), true);
+            return;
+        }
+
+        boolean resumeSame = blueprintId.equals(newBlueprintId) && progress > 0 && !projectComplete;
+        if (resumeSame) {
+            rotation = Math.floorMod(quarterTurns, 4);
+            projectActive = true;
+        } else {
+            blueprintId = newBlueprintId;
+            rotation = Math.floorMod(quarterTurns, 4);
+            progress = 0;
+            skippedObstructions = 0;
+            projectComplete = false;
+            projectActive = true;
+        }
         markDirty();
-        player.sendMessage(Text.literal("[Colony] Заказано: " + definition.title()
-                + ". Блоков: " + definition.placements().size()
-                + ". Поворот: " + (rotation * 90) + "°."), false);
+        int moved = depositMaterials(player);
+        player.sendMessage(Text.literal("[Colony] Заказано: " + definition.title() + ". Блоков: "
+                + definition.placements().size() + ". Поворот: " + (rotation * 90)
+                + "°. В склад ратуши добавлено предметов: " + moved + "."), false);
+    }
+
+    public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation, ServerPlayerEntity player) {
+        if (blueprintId.equals(requestedBlueprint)) {
+            rotation = Math.floorMod(requestedRotation, 4);
+            int moved = depositMaterials(player);
+            player.sendMessage(Text.literal("[Colony] В ратушу перенесено предметов: " + moved
+                    + ". Запас стройки обновлён."), true);
+            markDirty();
+            return;
+        }
+        if (projectActive || (progress > 0 && !projectComplete)) {
+            player.sendMessage(Text.literal("[Colony] Нельзя сменить чертёж, пока текущий проект не завершён."), true);
+            return;
+        }
+        BlueprintDefinition definition = BlueprintRegistry.getDefinition(requestedBlueprint).orElse(null);
+        if (definition == null) {
+            player.sendMessage(Text.literal("[Colony] Чертёж не найден."), true);
+            return;
+        }
+        blueprintId = requestedBlueprint;
+        rotation = Math.floorMod(requestedRotation, 4);
+        progress = 0;
+        projectComplete = false;
+        int moved = depositMaterials(player);
+        markDirty();
+        player.sendMessage(Text.literal("[Colony] Выбрана схема «" + definition.title()
+                + "». Перенесено предметов: " + moved + ". Чтобы начать стройку, нажми соответствующую кнопку."), true);
+    }
+
+    private int depositMaterials(PlayerEntity player) {
+        BlueprintDefinition definition = currentDefinition();
+        Map<Identifier, Integer> required = remainingRequirements(definition);
+        int movedTotal = 0;
+
+        for (Map.Entry<Identifier, Integer> entry : required.entrySet()) {
+            Identifier itemId = entry.getKey();
+            int missing = entry.getValue() - resourceStock.getOrDefault(itemId, 0);
+            if (missing <= 0 || !Registries.ITEM.containsId(itemId)) continue;
+            Item item = Registries.ITEM.get(itemId);
+
+            for (ItemStack stack : player.getInventory().main) {
+                if (missing <= 0) break;
+                if (stack.isEmpty() || stack.getItem() != item) continue;
+                int amount = Math.min(missing, stack.getCount());
+                stack.decrement(amount);
+                resourceStock.merge(itemId, amount, Integer::sum);
+                missing -= amount;
+                movedTotal += amount;
+            }
+        }
+        if (movedTotal > 0) markDirty();
+        return movedTotal;
+    }
+
+    private Map<Identifier, Integer> remainingRequirements(BlueprintDefinition definition) {
+        Map<Identifier, Integer> required = new HashMap<>();
+        List<CottageBlueprint.Placement> plan = definition.placements();
+        int start = blueprintId.equals(definition.id()) ? Math.min(progress, plan.size()) : 0;
+        for (int i = start; i < plan.size(); i++) {
+            Item item = plan.get(i).state().getBlock().asItem();
+            if (item == Items.AIR) continue;
+            Identifier itemId = Registries.ITEM.getId(item);
+            required.merge(itemId, 1, Integer::sum);
+        }
+        return required;
     }
 
     public void togglePause(PlayerEntity player) {
         if (projectComplete) {
-            player.sendMessage(Text.literal("[Colony] Проект завершён. Выберите чертёж и начните новый заказ."), true);
+            player.sendMessage(Text.literal("[Colony] Проект завершён. Выбери чертёж и начни новый заказ."), true);
             return;
         }
         if (!projectActive && progress == 0) {
-            player.sendMessage(Text.literal("[Colony] Сначала выберите чертёж и нажмите «Начать строительство»."), true);
+            player.sendMessage(Text.literal("[Colony] Сначала выбери чертёж и нажми «Начать строительство»."), true);
             return;
         }
         projectActive = !projectActive;
         markDirty();
-        String status = projectActive ? "возобновлено" : "приостановлено";
-        player.sendMessage(Text.literal("[Colony] Строительство " + status + ": " + progress
-                + "/" + currentDefinition().placements().size()), true);
+        player.sendMessage(Text.literal("[Colony] Строительство " + (projectActive ? "возобновлено" : "приостановлено")
+                + ": " + progress + "/" + currentDefinition().placements().size()), true);
     }
 
     public static void tick(World world, BlockPos pos, BlockState state, TownHallBlockEntity hall) {
@@ -89,7 +174,6 @@ public final class TownHallBlockEntity extends BlockEntity {
         VillagerEntity builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
                         villager -> villager.getCommandTags().contains(assignmentTag))
                 .stream().findFirst().orElse(null);
-
         if (builder == null) {
             builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
                             villager -> villager.getCommandTags().contains(BUILDER_TAG)
@@ -117,15 +201,38 @@ public final class TownHallBlockEntity extends BlockEntity {
         CottageBlueprint.Placement placement = plan.get(hall.progress);
         BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation));
         BlockState oldState = serverWorld.getBlockState(target);
-        BlockState rotatedState = rotateState(placement.state(), hall.rotation);
-        if ((oldState.isAir() || oldState.isReplaceable()) && oldState.getFluidState().isEmpty()) {
-            serverWorld.setBlockState(target, rotatedState, Block.NOTIFY_ALL);
-        } else {
+        if (!(oldState.isAir() || oldState.isReplaceable()) || !oldState.getFluidState().isEmpty()) {
             hall.skippedObstructions++;
+        } else {
+            Item item = placement.state().getBlock().asItem();
+            if (item != Items.AIR) {
+                Identifier itemId = Registries.ITEM.getId(item);
+                int stock = hall.resourceStock.getOrDefault(itemId, 0);
+                if (stock <= 0) {
+                    hall.notifyMissingResource(serverWorld, pos, item);
+                    return;
+                }
+                if (stock == 1) hall.resourceStock.remove(itemId);
+                else hall.resourceStock.put(itemId, stock - 1);
+            }
+            serverWorld.setBlockState(target, rotateState(placement.state(), hall.rotation), Block.NOTIFY_ALL);
         }
+
         hall.progress++;
         hall.markDirty();
         if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
+    }
+
+    private void notifyMissingResource(ServerWorld world, BlockPos hallPos, Item item) {
+        if (world.getTime() - lastMissingResourceNotification < 100L) return;
+        lastMissingResourceNotification = world.getTime();
+        Text message = Text.literal("[Colony] На стройке закончился ресурс: ").append(item.getName())
+                .append(Text.literal(". Пополни ратушу через интерфейс."));
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5, hallPos.getZ() + 0.5) <= 64.0) {
+                player.sendMessage(message, false);
+            }
+        }
     }
 
     private static BlockPos rotate(BlockPos source, BlueprintDefinition definition, int turns) {
@@ -181,6 +288,9 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putInt("SkippedObstructions", skippedObstructions);
         nbt.putString("BlueprintId", blueprintId.toString());
         nbt.putInt("Rotation", rotation);
+        NbtCompound stockTag = new NbtCompound();
+        resourceStock.forEach((id, amount) -> stockTag.putInt(id.toString(), amount));
+        nbt.put("ResourceStock", stockTag);
     }
 
     @Override
@@ -193,6 +303,12 @@ public final class TownHallBlockEntity extends BlockEntity {
         Identifier parsed = Identifier.tryParse(nbt.getString("BlueprintId").orElse("colony_foundations:cottage"));
         blueprintId = parsed == null ? Identifier.of("colony_foundations", "cottage") : parsed;
         rotation = Math.floorMod(nbt.getInt("Rotation").orElse(0), 4);
+        resourceStock.clear();
+        nbt.getCompound("ResourceStock").ifPresent(stockTag -> stockTag.getKeys().forEach(key -> {
+            Identifier itemId = Identifier.tryParse(key);
+            int amount = Math.max(0, stockTag.getInt(key).orElse(0));
+            if (itemId != null && amount > 0 && Registries.ITEM.containsId(itemId)) resourceStock.put(itemId, amount);
+        }));
         int max = Math.max(1, currentDefinition().placements().size());
         progress = Math.min(progress, max);
         if (progress >= max) {
