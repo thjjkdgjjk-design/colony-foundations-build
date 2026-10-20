@@ -21,6 +21,7 @@ public final class SchematicCatalogScreen extends Screen {
     private List<SchematicCatalogPayload.Entry> entries = List.of();
     private int selected = 0;
     private int rotation = 0;
+    private int mirror = 0;
     private int page = 0;
     private int totalPages = 1;
     private int totalEntries = 0;
@@ -57,6 +58,12 @@ public final class SchematicCatalogScreen extends Screen {
             status = "Rotation: " + (rotation * 90) + "°";
         }).dimensions(center - 205, this.height - 35, 125, 20).build());
 
+        addDrawableChild(ButtonWidget.builder(Text.literal(mirrorLabel()), button -> {
+            mirror = (mirror + 1) % 3;
+            button.setMessage(Text.literal(mirrorLabel()));
+            status = "Mirror: " + mirrorLabel();
+        }).dimensions(center - 65, this.height - 60, 135, 20).build());
+
         addDrawableChild(ButtonWidget.builder(Text.literal("Place (creative)"), button -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player == null) return;
@@ -69,7 +76,7 @@ public final class SchematicCatalogScreen extends Screen {
                 return;
             }
             ColonySchematicsClient.requestPlacement(
-                    new PlaceSchematicPayload(entries.get(selected).id(), rotation));
+                    new PlaceSchematicPayload(entries.get(selected).id(), rotation, mirror));
             status = "Placement request sent to server.";
         }).dimensions(center - 65, this.height - 35, 135, 20).build());
 
@@ -143,7 +150,7 @@ public final class SchematicCatalogScreen extends Screen {
                 Text.literal("Search: " + visibleQuery + "  •  " + totalEntries + " blueprints"),
                 this.width / 2, 25, 0xB8C8D8);
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Page " + (page + 1) + " / " + totalPages + "   |   Rotate: " + (rotation * 90) + "°"),
+                Text.literal("Page " + (page + 1) + " / " + totalPages + "   |   Rotate: " + (rotation * 90) + "°   |   Mirror: " + mirrorLabel()),
                 this.width / 2, 43, 0xFFFFFF);
 
         int left = 14;
@@ -176,8 +183,8 @@ public final class SchematicCatalogScreen extends Screen {
                 ? "Selected: none"
                 : "Selected: " + entries.get(selected).title();
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal(selectedLabel + "   •   Rotation: " + (rotation * 90) + "°"),
-                this.width / 2, this.height - 52, 0xFFFFFF);
+                Text.literal(selectedLabel + "   •   Rotation: " + (rotation * 90) + "°   •   Mirror: " + mirrorLabel()),
+                this.width / 2, this.height - 82, 0xFFFFFF);
         context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal(status),
                 this.width / 2, this.height - 13, 0xB8C8D8);
@@ -199,6 +206,14 @@ public final class SchematicCatalogScreen extends Screen {
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    private String mirrorLabel() {
+        return switch (mirror) {
+            case 1 -> "Front/Back";
+            case 2 -> "Left/Right";
+            default -> "Off";
+        };
     }
 
     @Override
