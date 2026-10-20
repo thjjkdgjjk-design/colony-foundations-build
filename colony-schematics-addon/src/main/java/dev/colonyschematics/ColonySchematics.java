@@ -36,6 +36,7 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.BlockRotation;
+import net.minecraft.util.BlockMirror;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.Hand;
@@ -122,7 +123,7 @@ public final class ColonySchematics implements ModInitializer {
         try {
             SchematicLoader.Schematic schematic = SchematicLoader.load(payload.schematicId(),
                     player.getServerWorld().getServer().getResourceManager());
-            placeLoadedSchematic(player, schematic, payload.rotation(), payload.schematicId());
+            placeLoadedSchematic(player, schematic, payload.rotation(), payload.mirror(), payload.schematicId());
         } catch (Exception exception) {
             LOGGER.warn("Unable to place schematic {}: {}", payload.schematicId(),
                     exception.getMessage(), exception);
@@ -159,7 +160,7 @@ public final class ColonySchematics implements ModInitializer {
         try {
             SchematicLoader.Schematic schematic = SchematicLoader.fromNbt(
                     Identifier.of(MOD_ID, "player_blueprint"), blueprint);
-            placeLoadedSchematic(player, schematic, payload.rotation(),
+            placeLoadedSchematic(player, schematic, payload.rotation(), 0,
                     Identifier.of(MOD_ID, "player_blueprint"));
         } catch (Exception exception) {
             LOGGER.warn("Unable to place portable blueprint: {}", exception.getMessage(), exception);
@@ -168,8 +169,14 @@ public final class ColonySchematics implements ModInitializer {
     }
 
     private static void placeLoadedSchematic(ServerPlayerEntity player, SchematicLoader.Schematic schematic,
-                                             int requestedRotation, Identifier sourceId) {
+                                             int requestedRotation, int requestedMirror, Identifier sourceId) {
         int turns = Math.floorMod(requestedRotation, 4);
+        int mirrorMode = Math.floorMod(requestedMirror, 3);
+        BlockMirror blockMirror = switch (mirrorMode) {
+            case 1 -> BlockMirror.FRONT_BACK;
+            case 2 -> BlockMirror.LEFT_RIGHT;
+            default -> BlockMirror.NONE;
+        };
         BlockRotation blockRotation = switch (turns) {
             case 1 -> BlockRotation.CLOCKWISE_90;
             case 2 -> BlockRotation.CLOCKWISE_180;
@@ -180,22 +187,20 @@ public final class ColonySchematics implements ModInitializer {
         ServerWorld world = player.getServerWorld();
         Direction facing = player.getHorizontalFacing();
         BlockPos requestedAnchor = player.getBlockPos().offset(facing, 4);
-        BlockPos anchorOffset = rotateBlockPos(schematic.primaryOffset(),
-                schematic.sizeX(), schematic.sizeZ(), turns);
+        BlockPos anchorOffset = transformBlockPos(schematic.primaryOffset(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
         BlockPos origin = requestedAnchor.subtract(anchorOffset);
 
         int placed = 0;
         int skipped = 0;
         for (SchematicLoader.BlockPlacement placement : schematic.blocks()) {
-            BlockPos local = rotateBlockPos(placement.position(),
-                    schematic.sizeX(), schematic.sizeZ(), turns);
+            BlockPos local = transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
             BlockPos target = origin.add(local);
             if (!insideWorld(world, target)) {
                 skipped++;
                 continue;
             }
 
-            BlockState state = placement.state().rotate(blockRotation);
+            BlockState state = placement.state().mirror(blockMirror).rotate(blockRotation);
             if (world.setBlockState(target, state, Block.NOTIFY_ALL)) {
                 placed++;
             }
@@ -204,8 +209,7 @@ public final class ColonySchematics implements ModInitializer {
         int blockEntitiesPlaced = 0;
         int blockEntitiesSkipped = 0;
         for (SchematicLoader.BlockEntityPlacement placement : schematic.blockEntities()) {
-            BlockPos local = rotateBlockPos(placement.position(),
-                    schematic.sizeX(), schematic.sizeZ(), turns);
+            BlockPos local = transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
             BlockPos target = origin.add(local);
             if (!insideWorld(world, target)) {
                 blockEntitiesSkipped++;
@@ -249,7 +253,7 @@ public final class ColonySchematics implements ModInitializer {
                 continue;
             }
 
-            transformEntityTree(data, origin, schematic.sizeX(), schematic.sizeZ(), turns);
+            transformEntityTree(data, origin, schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
             Entity entity = EntityType.loadEntityWithPassengers(data, world, SpawnReason.LOAD, Function.identity());
             if (entity == null || !entity.getType().isSaveable()) continue;
             if (world.getWorldBorder().contains(entity.getBlockPos()) && world.spawnEntity(entity)) placed++;
@@ -257,19 +261,23 @@ public final class ColonySchematics implements ModInitializer {
         return placed;
     }
 
-    private static void transformEntityTree(NbtCompound data, BlockPos origin, int sx, int sz, int turns) {
+    private static void transformEntityTree(NbtCompound data, BlockPos origin, int sx, int sz, int turns, int mirrorMode) {
         NbtList position = data.getList("Pos").orElse(null);
         if (position != null && position.size() >= 3) {
             double x = position.getDouble(0).orElse(0.0);
             double y = position.getDouble(1).orElse(0.0);
             double z = position.getDouble(2).orElse(0.0);
+            double mx = x;
+            double mz = z;
+            if (mirrorMode == 1) mz = sz - mz;
+            if (mirrorMode == 2) mx = sx - mx;
             double rx;
             double rz;
             switch (turns) {
-                case 1 -> { rx = sz - z; rz = x; }
-                case 2 -> { rx = sx - x; rz = sz - z; }
-                case 3 -> { rx = z; rz = sx - x; }
-                default -> { rx = x; rz = z; }
+                case 1 -> { rx = sz - mz; rz = mx; }
+                case 2 -> { rx = sx - mx; rz = sz - mz; }
+                case 3 -> { rx = mz; rz = sx - mx; }
+                default -> { rx = mx; rz = mz; }
             }
             NbtList transformed = new NbtList();
             transformed.add(NbtDouble.of(origin.getX() + rx));
@@ -280,7 +288,10 @@ public final class ColonySchematics implements ModInitializer {
 
         NbtList rotation = data.getList("Rotation").orElse(null);
         if (rotation != null && rotation.size() >= 2 && turns != 0) {
-            float yaw = rotation.getFloat(0).orElse(0.0f) + 90.0f * turns;
+            float yaw = rotation.getFloat(0).orElse(0.0f);
+            if (mirrorMode == 1) yaw = -yaw;
+            if (mirrorMode == 2) yaw = 180.0f - yaw;
+            yaw += 90.0f * turns;
             NbtList transformed = new NbtList();
             transformed.add(NbtFloat.of(yaw));
             transformed.add(NbtFloat.of(rotation.getFloat(1).orElse(0.0f)));
@@ -291,17 +302,22 @@ public final class ColonySchematics implements ModInitializer {
         if (passengers != null) {
             for (int i = 0; i < passengers.size(); i++) {
                 Optional<NbtCompound> passenger = passengers.getCompound(i);
-                passenger.ifPresent(tag -> transformEntityTree(tag, origin, sx, sz, turns));
+                passenger.ifPresent(tag -> transformEntityTree(tag, origin, sx, sz, turns, mirrorMode));
             }
         }
     }
 
-    private static BlockPos rotateBlockPos(BlockPos pos, int sx, int sz, int turns) {
+    private static BlockPos transformBlockPos(BlockPos pos, int sx, int sz, int turns, int mirrorMode) {
+        int x = pos.getX();
+        int y = pos.getY();
+        int z = pos.getZ();
+        if (mirrorMode == 1) z = sz - 1 - z;
+        if (mirrorMode == 2) x = sx - 1 - x;
         return switch (turns) {
-            case 1 -> new BlockPos(sz - 1 - pos.getZ(), pos.getY(), pos.getX());
-            case 2 -> new BlockPos(sx - 1 - pos.getX(), pos.getY(), sz - 1 - pos.getZ());
-            case 3 -> new BlockPos(pos.getZ(), pos.getY(), sx - 1 - pos.getX());
-            default -> pos;
+            case 1 -> new BlockPos(sz - 1 - z, y, x);
+            case 2 -> new BlockPos(sx - 1 - x, y, sz - 1 - z);
+            case 3 -> new BlockPos(z, y, sx - 1 - x);
+            default -> new BlockPos(x, y, z);
         };
     }
 
