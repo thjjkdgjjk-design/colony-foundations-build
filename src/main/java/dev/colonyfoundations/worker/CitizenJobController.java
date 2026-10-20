@@ -464,3 +464,4 @@ public final class CitizenJobController {
         courierHut.clearCourierCargo();
         courierHut.clearCourierTask();
     }
+}
