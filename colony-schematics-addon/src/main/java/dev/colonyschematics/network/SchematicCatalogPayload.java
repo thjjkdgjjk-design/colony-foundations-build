@@ -11,6 +11,7 @@ import java.util.ArrayList;
 
 public record SchematicCatalogPayload(
         int page,
+        String query,
         int totalPages,
         int totalEntries,
         ArrayList<Entry> entries
@@ -31,6 +32,7 @@ public record SchematicCatalogPayload(
 
     public static final PacketCodec<RegistryByteBuf, SchematicCatalogPayload> CODEC = PacketCodec.tuple(
             PacketCodecs.VAR_INT, SchematicCatalogPayload::page,
+            PacketCodecs.string(128), SchematicCatalogPayload::query,
             PacketCodecs.VAR_INT, SchematicCatalogPayload::totalPages,
             PacketCodecs.VAR_INT, SchematicCatalogPayload::totalEntries,
             PacketCodecs.collection(ArrayList::new, Entry.CODEC, MAX_PACKET_ENTRIES),
@@ -38,6 +40,7 @@ public record SchematicCatalogPayload(
     );
 
     public SchematicCatalogPayload {
+        query = query == null ? "" : query.substring(0, Math.min(query.length(), 128));
         entries = entries == null ? new ArrayList<>() : new ArrayList<>(entries);
         if (entries.size() > MAX_PACKET_ENTRIES) {
             entries.subList(MAX_PACKET_ENTRIES, entries.size()).clear();
