@@ -14,9 +14,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Colony Foundations is a clean-room, experimental gameplay prototype.
- * Its blueprint loader is an original data-pack system, not an official
- * implementation or replacement for MineColonies or Structurize.
+ * Colony Foundations is a staged Fabric port/prototype. Its feature audit lists
+ * what is ported and what is not; registration does not imply full parity with
+ * the original MineColonies professions.
  */
 public final class ColonyFoundations implements ModInitializer {
     public static final String MOD_ID = "colony_foundations";
@@ -35,9 +35,10 @@ public final class ColonyFoundations implements ModInitializer {
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(ModBlocks.TOWN_HALL);
             entries.add(ModItems.BUILDER_CONTRACT);
+            entries.add(ModItems.WORKER_CONTRACT);
             ModHuts.items().forEach(entries::add);
         });
 
-        LOGGER.info("Colony Foundations initialized: Town Hall, {} hut/utility blocks, construction queue and Structurize NBT import.", ModHuts.IDS.size());
+        LOGGER.info("Colony Foundations initialized: Town Hall, {} hut/utility blocks, worker contracts, construction queue and blueprint import.", ModHuts.IDS.size());
     }
 }
