@@ -2,6 +2,8 @@ package dev.colonyfoundations.client;
 
 import dev.colonyfoundations.ColonyFoundations;
 import dev.colonyfoundations.block.ModBlocks;
+import dev.colonyfoundations.network.ProjectStatusPayload;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
@@ -31,6 +33,13 @@ public final class ColonyFoundationsClient implements ClientModInitializer {
             return ActionResult.PASS;
         });
         BlueprintPreviewRenderer.register();
+        ClientPlayNetworking.registerGlobalReceiver(ProjectStatusPayload.ID, (payload, context) ->
+                context.client().execute(() -> {
+                    if (MinecraftClient.getInstance().currentScreen instanceof BlueprintCatalogScreen screen
+                            && screen.previewHallPos().equals(payload.hallPos())) {
+                        screen.updateStatus(payload.statusText());
+                    }
+                }));
     }
 
     public static void openTownHall(BlockPos pos) {

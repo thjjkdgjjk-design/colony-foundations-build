@@ -2,9 +2,9 @@ package dev.colonyfoundations.client;
 
 import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
+import dev.colonyfoundations.network.RequestProjectStatusPayload;
 import dev.colonyfoundations.network.SetProjectPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -18,7 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** In-game blueprint catalog with a 2D facade preview and material summary. */
+/** In-game schematic catalog, 2D preview, material summary and live colony status. */
 public final class BlueprintCatalogScreen extends Screen {
     private record Entry(String label, Identifier id) { }
     private static final List<Entry> ENTRIES = makeEntries();
@@ -30,6 +30,8 @@ public final class BlueprintCatalogScreen extends Screen {
     private int rotation;
     private int left;
     private int top;
+    private int statusPollTicks;
+    private String serverStatus = "Статус загружается...";
 
     public BlueprintCatalogScreen(BlockPos hallPos) {
         super(Text.literal("Строительство колонии"));
@@ -58,7 +60,7 @@ public final class BlueprintCatalogScreen extends Screen {
     protected void init() {
         super.init();
         left = width / 2 - 220;
-        top = height / 2 - 112;
+        top = height / 2 - 122;
 
         int start = page * PAGE_SIZE;
         int end = Math.min(ENTRIES.size(), start + PAGE_SIZE);
@@ -87,15 +89,35 @@ public final class BlueprintCatalogScreen extends Screen {
 
         addDrawableChild(ButtonWidget.builder(Text.literal("Начать строительство"), button -> {
             send(1);
-            close();
         }).dimensions(left + 212, top + 153, 214, 20).build());
 
         addDrawableChild(ButtonWidget.builder(Text.literal("Снабдить из инвентаря"), button -> send(3))
-                .dimensions(left + 10, top + 179, 140, 20).build());
+                .dimensions(left + 10, top + 207, 140, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Пауза / продолжить"), button -> send(2))
-                .dimensions(left + 156, top + 179, 140, 20).build());
+                .dimensions(left + 156, top + 207, 140, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
-                .dimensions(left + 302, top + 179, 124, 20).build());
+                .dimensions(left + 302, top + 207, 124, 20).build());
+
+        requestStatus();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (++statusPollTicks >= 20) {
+            statusPollTicks = 0;
+            requestStatus();
+        }
+    }
+
+    private void requestStatus() {
+        if (client != null && client.getNetworkHandler() != null) {
+            ClientPlayNetworking.send(new RequestProjectStatusPayload(hallPos));
+        }
+    }
+
+    public void updateStatus(String statusText) {
+        serverStatus = statusText == null ? "Статус недоступен" : statusText;
     }
 
     public BlockPos previewHallPos() {
@@ -120,8 +142,8 @@ public final class BlueprintCatalogScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
-        context.fill(left, top, left + 440, top + 207, 0xE6111720);
-        context.drawBorder(left, top, 440, 207, 0xFF6F879D);
+        context.fill(left, top, left + 440, top + 242, 0xE6111720);
+        context.drawBorder(left, top, 440, 242, 0xFF6F879D);
         context.drawCenteredTextWithShadow(textRenderer, title, width / 2, top + 8, 0xFFFFFFFF);
         context.drawTextWithShadow(textRenderer, Text.literal("СХЕМЫ"), left + 12, top + 23, 0xFFB9C9D8);
         context.drawTextWithShadow(textRenderer, Text.literal("ПРЕДПРОСМОТР И МАТЕРИАЛЫ"),
@@ -151,8 +173,19 @@ public final class BlueprintCatalogScreen extends Screen {
             drawFacade(context, definition, previewLeft + 6, top + 78, 198, 62);
             drawMaterials(context, definition, previewLeft + 6, top + 151);
         } else {
-            context.drawTextWithShadow(textRenderer, Text.literal("Не удалось загрузить схему"), previewLeft + 6, top + 60, 0xFFFF7777);
+            context.drawTextWithShadow(textRenderer,
+                    Text.literal("Схему нельзя прочитать"), previewLeft + 6, top + 60, 0xFFFF7777);
         }
+
+        String[] lines = serverStatus.split("\\n");
+        for (int i = 0; i < Math.min(3, lines.length); i++) {
+            String line = lines[i];
+            if (line.length() > 26) line = line.substring(0, 25) + "…";
+            context.drawTextWithShadow(textRenderer, Text.literal(line), left + 12, top + 181 + i * 10,
+                    i == 0 ? 0xFF9CE6B0 : 0xFFD6E2EA);
+        }
+        context.drawTextWithShadow(textRenderer,
+                Text.literal("Статус колонии"), left + 12, top + 167, 0xFFB9C9D8);
         super.render(context, mouseX, mouseY, delta);
     }
 

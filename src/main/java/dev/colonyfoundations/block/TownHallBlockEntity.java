@@ -143,6 +143,20 @@ public final class TownHallBlockEntity extends BlockEntity {
         return required;
     }
 
+    public String statusForScreen() {
+        String state = projectComplete ? "Завершено" : projectActive ? "Строится" : progress > 0 ? "Пауза" : "Не начато";
+        BlueprintDefinition definition = currentDefinition();
+        int total = definition.placements().size();
+        String stock = resourceStock.entrySet().stream()
+                .sorted(Map.Entry.<Identifier, Integer>comparingByValue().reversed())
+                .limit(2)
+                .map(entry -> Registries.ITEM.get(entry.getKey()).getName().getString() + " ×" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (stock.isBlank()) stock = "пусто";
+        if (stock.length() > 70) stock = stock.substring(0, 67) + "...";
+        return state + "\nПрогресс: " + Math.min(progress, total) + "/" + total + "\nСклад: " + stock;
+    }
+
     public void togglePause(PlayerEntity player) {
         if (projectComplete) {
             player.sendMessage(Text.literal("[Colony] Проект завершён. Выбери чертёж и начни новый заказ."), true);
