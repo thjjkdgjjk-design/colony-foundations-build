@@ -14,6 +14,7 @@ Updated: 2026-10-21. This is a traceable implementation register, not a claim of
 - Official schematic repository: https://github.com/ldtteam/minecolonies-schematics
 - Local license notes: THIRD_PARTY_NOTICES.md
 - Existing source/dependency audit: PORT_AUDIT.md
+- Pinned upstream ID inventory (source tree/blob hashes, registry IDs, asset/dependency counts): `MINECOLONIES_UPSTREAM_INVENTORY.md`
 
 The audited source baseline is primarily MineColonies/Structurize for Minecraft 1.20.1 Forge, while this project targets Minecraft 1.21.5 Fabric. Feature details not yet traced to a pinned upstream source revision or official wiki page remain marked for verification. Registration or compilation alone never means functional parity.
 
@@ -58,6 +59,10 @@ The audited source baseline is primarily MineColonies/Structurize for Minecraft 
 Do not confuse blueprint file count with implemented building parity. PORT_AUDIT.md records a pinned schematic snapshot with 598 NBT files in nine style folders; a separately supplied archive was scanned as 9,515 files across 23 styles. These are different source sets and must not be combined into one official count without a reproducible revision-level manifest. Public builds do not bundle the pinned 598-file snapshot because redistribution permission for that exact revision has not been established. Each candidate source revision needs a manifest containing hash, style, building/type/level metadata and license status.
 
 MineColonies source code has a GPL-3.0 project license, but its resource directory contains a separate All Rights Reserved notice. The source-code license is not treated as a blanket license for textures, models, sounds, UI art or blueprints.
+
+## Verified milestones
+
+- Commit `bb94b75c3650d66e5880fcec41457a5107d6f204` passed GitHub Actions [run #39509235016](https://github.com/thjjkdgjjk-design/colony-foundations-build/actions/runs/39509235016) on JDK 22. `gradle clean build` (including test compilation and JUnit execution), the schematic add-on build, distribution preparation, artifact upload and test release all succeeded. Persistent colony identity and the four-argument `ClaimRecord` compatibility overload are **Verified by CI**, not **Verified in game**.
 
 ## Dependency order
 
