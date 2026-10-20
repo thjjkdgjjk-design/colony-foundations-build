@@ -28,6 +28,11 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtString;
 
 public final class TownHallBlockEntity extends BlockEntity {
     public static final String BUILDER_TAG = "colony_foundations_builder";
@@ -43,9 +48,92 @@ public final class TownHallBlockEntity extends BlockEntity {
     private int siteOffsetX = 5;
     private int siteOffsetZ = -3;
     private final Map<Identifier, Integer> resourceStock = new HashMap<>();
+    private UUID ownerUuid;
+    private String ownerName = "";
+    private String colonyName = "";
+    private int colonyLevel = 1;
+    private final Set<UUID> colonyMembers = new HashSet<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TOWN_HALL, pos, state);
+    }
+
+    /**
+     * Claim a newly-placed hall for the first player who opens it. Ownership is persisted
+     * with the hall so other players cannot silently overwrite colony projects.
+     */
+    public void ensureFounded(PlayerEntity player) {
+        if (ownerUuid != null) return;
+        ownerUuid = player.getUuid();
+        ownerName = player.getName().getString();
+        colonyName = ownerName + "'s Colony";
+        colonyLevel = 1;
+        markDirty();
+        player.sendMessage(Text.literal("[Colony] Колония «" + colonyName + "» основана. Ратуша теперь принадлежит вам."), false);
+    }
+
+    public boolean canManage(PlayerEntity player) {
+        ensureFounded(player);
+        if (ownerUuid != null && (ownerUuid.equals(player.getUuid()) || colonyMembers.contains(player.getUuid()))) {
+            return true;
+        }
+        player.sendMessage(Text.literal("[Colony] У вас нет прав на управление этой колонией."), true);
+        return false;
+    }
+
+    public boolean isOwner(PlayerEntity player) {
+        ensureFounded(player);
+        return ownerUuid != null && ownerUuid.equals(player.getUuid());
+    }
+
+    public String colonyName() {
+        return colonyName.isBlank() ? "Unnamed Colony" : colonyName;
+    }
+
+    public int colonyLevel() {
+        return colonyLevel;
+    }
+
+    public String colonyOwnerName() {
+        return ownerName;
+    }
+
+    public Set<UUID> colonyMembers() {
+        return Set.copyOf(colonyMembers);
+    }
+
+    public boolean renameColony(ServerPlayerEntity owner, String requestedName) {
+        if (!isOwner(owner)) {
+            owner.sendMessage(Text.literal("[Colony] Только владелец может переименовать колонию."), true);
+            return false;
+        }
+        String safe = requestedName == null ? "" : requestedName.replaceAll("[^\\p{L}\\p{N} _'-]", "").trim();
+        if (safe.isBlank() || safe.length() > 32) {
+            owner.sendMessage(Text.literal("[Colony] Имя должно содержать 1–32 допустимых символа."), true);
+            return false;
+        }
+        colonyName = safe;
+        markDirty();
+        return true;
+    }
+
+    public boolean inviteMember(ServerPlayerEntity owner, ServerPlayerEntity target) {
+        if (!isOwner(owner)) return false;
+        if (target.getUuid().equals(ownerUuid)) return true;
+        boolean added = colonyMembers.add(target.getUuid());
+        if (added) {
+            markDirty();
+            target.sendMessage(Text.literal("[Colony] Вас добавили в колонию «" + colonyName() + "»."), false);
+            owner.sendMessage(Text.literal("[Colony] Игрок " + target.getName().getString() + " получил доступ к колонии."), false);
+        }
+        return added;
+    }
+
+    public boolean revokeMember(ServerPlayerEntity owner, UUID memberUuid) {
+        if (!isOwner(owner)) return false;
+        boolean removed = colonyMembers.remove(memberUuid);
+        if (removed) markDirty();
+        return removed;
     }
 
     public int siteOffsetX() {
@@ -173,7 +261,10 @@ public final class TownHallBlockEntity extends BlockEntity {
                 .collect(java.util.stream.Collectors.joining(", "));
         if (stock.isBlank()) stock = "пусто";
         if (stock.length() > 70) stock = stock.substring(0, 67) + "...";
-        return state + "\nПрогресс: " + Math.min(progress, total) + "/" + total + "\nСклад: " + stock;
+        return "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\\nВладелец: "
+                + (ownerName.isBlank() ? "не назначен" : ownerName)
+                + "\\n" + state + "\\nПрогресс: " + Math.min(progress, total) + "/" + total
+                + "\\nСклад: " + stock;
     }
 
     public void togglePause(PlayerEntity player) {
@@ -329,6 +420,13 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putInt("Rotation", rotation);
         nbt.putInt("SiteOffsetX", siteOffsetX);
         nbt.putInt("SiteOffsetZ", siteOffsetZ);
+        if (ownerUuid != null) nbt.putString("ColonyOwnerUuid", ownerUuid.toString());
+        nbt.putString("ColonyOwnerName", ownerName);
+        nbt.putString("ColonyName", colonyName);
+        nbt.putInt("ColonyLevel", colonyLevel);
+        NbtList membersTag = new NbtList();
+        colonyMembers.stream().map(UUID::toString).sorted().forEach(member -> membersTag.add(NbtString.of(member)));
+        nbt.put("ColonyMembers", membersTag);
         NbtCompound stockTag = new NbtCompound();
         resourceStock.forEach((id, amount) -> stockTag.putInt(id.toString(), amount));
         nbt.put("ResourceStock", stockTag);
@@ -346,6 +444,24 @@ public final class TownHallBlockEntity extends BlockEntity {
         rotation = Math.floorMod(nbt.getInt("Rotation").orElse(0), 4);
         siteOffsetX = clampSiteOffset(nbt.getInt("SiteOffsetX").orElse(5));
         siteOffsetZ = clampSiteOffset(nbt.getInt("SiteOffsetZ").orElse(-3));
+        String ownerRaw = nbt.getString("ColonyOwnerUuid").orElse("");
+        try {
+            ownerUuid = ownerRaw.isBlank() ? null : UUID.fromString(ownerRaw);
+        } catch (IllegalArgumentException ignored) {
+            ownerUuid = null;
+        }
+        ownerName = nbt.getString("ColonyOwnerName").orElse("");
+        colonyName = nbt.getString("ColonyName").orElse("");
+        colonyLevel = Math.max(1, nbt.getInt("ColonyLevel").orElse(1));
+        colonyMembers.clear();
+        nbt.getList("ColonyMembers").ifPresent(members -> {
+            for (int i = 0; i < members.size(); i++) {
+                members.getString(i).ifPresent(raw -> {
+                    try { colonyMembers.add(UUID.fromString(raw)); }
+                    catch (IllegalArgumentException ignored) { }
+                });
+            }
+        });
         resourceStock.clear();
         nbt.getCompound("ResourceStock").ifPresent(stockTag -> stockTag.getKeys().forEach(key -> {
             Identifier itemId = Identifier.tryParse(key);
