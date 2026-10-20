@@ -1,13 +1,17 @@
 # Third-party notices
 
-## MineColonies Schematics
+## MineColonies schematic assets currently packaged by CI
 
-- Project: https://github.com/ldtteam/minecolonies-schematics
-- Pinned source commit: https://github.com/ldtteam/minecolonies-schematics/commit/ae86ba500d3172220669657e0102861fa8b7f3be
-- Assets bundled by the build: citizen-house NBT schematics from the birch, darkoak, defaultwooden, and stone styles, tiers 1–5.
-- License: GNU General Public License version 3.0. The license text is included in the root LICENSE file.
-- These schematics are authored by LDTTeam and contributors. Colony Foundations is a separate experimental Fabric project and is not endorsed by LDTTeam.
+- Upstream project: https://github.com/ldtteam/minecolonies-schematics
+- Pinned source revision: https://github.com/ldtteam/minecolonies-schematics/commit/ae86ba500d3172220669657e0102861fa8b7f3be
+- Currently fetched file set: 20 citizen-house NBT schematics (birch, darkoak, defaultwooden, stone; tiers 1–5).
+- The upstream repository README describes these files as schematics for use in MineColonies. The pinned revision reviewed does not provide an explicit broad reuse license in the README.
+- These assets are not assumed to be GPL merely because the MineColonies Java source is GPL. Please obtain or verify a suitable asset license before redistributing the schematics outside their intended context.
 
-## Scope of import
+## Original MineColonies resources
 
-The bundled NBT resources are read as block palettes and position arrays. The importer does not invoke source-mod logic and intentionally omits tile entities, entities, or special Structurize metadata. Some blocks may differ or be missing under Minecraft 1.21.5 or a Fabric modpack.
+The supplied MineColonies source archive contains source/resources/assets/minecolonies/LICENSE with the text All Rights Reserved. Its original GUI artwork, textures, models, sounds and other resources are not licensed by the root GPL source license. This repository does not claim a right to republish those original resources.
+
+## Code
+
+The new Colony Schematics and Colony Foundations implementation code is an independent Fabric port/prototype. The upstream Java projects MineColonies and Structurize are GPL-3.0 projects; consult their full source licenses for any derivative source modules. No endorsement by LDTTeam is implied.
