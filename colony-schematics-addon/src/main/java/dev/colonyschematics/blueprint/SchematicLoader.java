@@ -41,6 +41,9 @@ public final class SchematicLoader {
     private static final int MAX_DIMENSION = 128;
     private static final int MAX_VOLUME = 131_072;
     private static final int MAX_PALETTE = 65_535;
+    static final int MAX_BLOCK_ENTITIES = 16_384;
+    static final int MAX_ENTITIES = 2_048;
+    static final int MAX_REQUIRED_MODS = 256;
     private static final Pattern BUNDLED_PATH = Pattern.compile(
             "minecolonies/(birch|darkoak|defaultwooden|stone)/buildings/citizen/citizen[1-5]"
     );
@@ -227,6 +230,9 @@ public final class SchematicLoader {
         NbtList list = root.getList("tile_entities")
                 .or(() -> root.getList("block_entities"))
                 .orElse(new NbtList());
+        if (list.size() > MAX_BLOCK_ENTITIES) {
+            throw new IllegalArgumentException("Block-entity count exceeds limit " + MAX_BLOCK_ENTITIES);
+        }
         List<BlockEntityPlacement> result = new ArrayList<>(list.size());
 
         for (int i = 0; i < list.size(); i++) {
@@ -241,6 +247,9 @@ public final class SchematicLoader {
 
     private static List<NbtCompound> readEntities(NbtCompound root) {
         NbtList list = root.getList("entities").orElse(new NbtList());
+        if (list.size() > MAX_ENTITIES) {
+            throw new IllegalArgumentException("Entity count exceeds limit " + MAX_ENTITIES);
+        }
         List<NbtCompound> result = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
             NbtCompound tag = list.getCompound(i).orElse(null);
@@ -251,10 +260,13 @@ public final class SchematicLoader {
 
     private static List<String> readRequiredMods(NbtCompound root) {
         NbtList list = root.getList("required_mods").orElse(new NbtList());
-        List<String> result = new ArrayList<>(list.size());
+        if (list.size() > MAX_REQUIRED_MODS) {
+            throw new IllegalArgumentException("Required-mod metadata exceeds limit " + MAX_REQUIRED_MODS);
+        }
+        java.util.LinkedHashSet<String> result = new java.util.LinkedHashSet<>();
         for (int i = 0; i < list.size(); i++) {
             String modId = list.getString(i).orElse("");
-            if (!modId.isBlank() && !result.contains(modId)) result.add(modId);
+            if (!modId.isBlank()) result.add(modId);
         }
         return List.copyOf(result);
     }

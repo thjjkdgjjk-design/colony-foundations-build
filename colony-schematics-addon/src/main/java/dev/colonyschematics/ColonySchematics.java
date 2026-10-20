@@ -73,6 +73,7 @@ public final class ColonySchematics implements ModInitializer {
     @Override
     public void onInitialize() {
         SchematicPlacementQueue.initialize();
+        SchematicScanner.initialize();
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(SCHEMATIC_TOOL);
             entries.add(BLUEPRINT_SCROLL);

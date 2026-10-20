@@ -1,6 +1,7 @@
 package dev.colonyschematics.blueprint;
 
 import dev.colonyschematics.ColonySchematics;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -16,12 +17,14 @@ import net.minecraft.nbt.NbtInt;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtString;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.world.World;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,24 +41,49 @@ import java.util.UUID;
  */
 public final class SchematicScanner {
     private static final int MAX_DIMENSION = 128;
-    private static final int MAX_VOLUME = 131_072;
-    private static final Map<UUID, BlockPos> FIRST_CORNERS = new HashMap<>();
+    private static final int MAX_VOLUME = 32_768;
+    private record FirstCorner(RegistryKey<World> dimension, BlockPos position) { }
+    private static final Map<UUID, FirstCorner> FIRST_CORNERS = new HashMap<>();
 
     private SchematicScanner() { }
 
+    public static void initialize() {
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                FIRST_CORNERS.remove(handler.player.getUuid()));
+    }
+
     public static void selectCorner(ServerPlayerEntity player, BlockPos clicked) {
-        BlockPos first = FIRST_CORNERS.remove(player.getUuid());
+        ServerWorld world = player.getServerWorld();
+        double distanceSquared = player.squaredDistanceTo(
+                clicked.getX() + 0.5, clicked.getY() + 0.5, clicked.getZ() + 0.5);
+        if (distanceSquared > 36.0
+                || clicked.getY() < world.getBottomY()
+                || clicked.getY() >= world.getBottomY() + world.getDimension().height()
+                || !world.getWorldBorder().contains(clicked)
+                || !world.isChunkLoaded(clicked)) {
+            FIRST_CORNERS.remove(player.getUuid());
+            player.sendMessage(Text.translatable("message.colony_schematics.scan_point_invalid"), true);
+            return;
+        }
+
+        FirstCorner first = FIRST_CORNERS.remove(player.getUuid());
         if (first == null) {
-            FIRST_CORNERS.put(player.getUuid(), clicked.toImmutable());
+            FIRST_CORNERS.put(player.getUuid(), new FirstCorner(world.getRegistryKey(), clicked.toImmutable()));
             player.sendMessage(Text.translatable("message.colony_schematics.scan_first_corner",
                     clicked.getX(), clicked.getY(), clicked.getZ()), true);
             return;
         }
+        if (!first.dimension().equals(world.getRegistryKey())) {
+            FIRST_CORNERS.put(player.getUuid(), new FirstCorner(world.getRegistryKey(), clicked.toImmutable()));
+            player.sendMessage(Text.translatable("message.colony_schematics.scan_dimension_changed"), true);
+            return;
+        }
 
+        BlockPos firstPos = first.position();
         BlockPos min = new BlockPos(
-                Math.min(first.getX(), clicked.getX()),
-                Math.min(first.getY(), clicked.getY()),
-                Math.min(first.getZ(), clicked.getZ()));
+                Math.min(firstPos.getX(), clicked.getX()),
+                Math.min(firstPos.getY(), clicked.getY()),
+                Math.min(firstPos.getZ(), clicked.getZ()));
         int sizeX = Math.abs(first.getX() - clicked.getX()) + 1;
         int sizeY = Math.abs(first.getY() - clicked.getY()) + 1;
         int sizeZ = Math.abs(first.getZ() - clicked.getZ()) + 1;
@@ -66,16 +94,21 @@ public final class SchematicScanner {
                     MAX_DIMENSION, MAX_VOLUME), true);
             return;
         }
-        if (min.getY() < player.getServerWorld().getBottomY()
-                || min.getY() + sizeY > player.getServerWorld().getBottomY()
-                + player.getServerWorld().getDimension().height()) {
+        if (min.getY() < world.getBottomY()
+                || min.getY() + sizeY > world.getBottomY() + world.getDimension().height()
+                || !world.getWorldBorder().contains(min)
+                || !world.getWorldBorder().contains(min.add(sizeX - 1, 0, sizeZ - 1))) {
             player.sendMessage(Text.translatable("message.colony_schematics.scan_outside_world"), true);
+            return;
+        }
+        if (!areChunksLoaded(world, min, sizeX, sizeZ)) {
+            player.sendMessage(Text.translatable("message.colony_schematics.scan_chunks_unloaded"), true);
             return;
         }
 
         try {
             String name = "scanned_" + min.getX() + "_" + min.getY() + "_" + min.getZ();
-            NbtCompound blueprint = capture(player.getServerWorld(), min, sizeX, sizeY, sizeZ, name);
+            NbtCompound blueprint = capture(world, min, sizeX, sizeY, sizeZ, name);
             ItemStack scroll = new ItemStack(ColonySchematics.BLUEPRINT_SCROLL);
             NbtCompound customData = new NbtCompound();
             customData.put("blueprint", blueprint);
@@ -89,9 +122,26 @@ public final class SchematicScanner {
                     sizeX, sizeY, sizeZ), false);
         } catch (Exception exception) {
             ColonySchematics.LOGGER.warn("Could not scan blueprint cuboid {} -> {}: {}",
-                    first, clicked, exception.getMessage(), exception);
-            player.sendMessage(Text.translatable("message.colony_schematics.scan_failed"), true);
+                    firstPos, clicked, exception.getMessage(), exception);
+            String key = exception instanceof IllegalArgumentException
+                    && exception.getMessage() != null && exception.getMessage().contains("limit")
+                    ? "message.colony_schematics.scan_too_complex"
+                    : "message.colony_schematics.scan_failed";
+            player.sendMessage(Text.translatable(key), true);
         }
+    }
+
+    private static boolean areChunksLoaded(ServerWorld world, BlockPos min, int sizeX, int sizeZ) {
+        int minChunkX = min.getX() >> 4;
+        int maxChunkX = (min.getX() + sizeX - 1) >> 4;
+        int minChunkZ = min.getZ() >> 4;
+        int maxChunkZ = (min.getZ() + sizeZ - 1) >> 4;
+        for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                if (!world.isChunkLoaded(new BlockPos(chunkX << 4, min.getY(), chunkZ << 4))) return false;
+            }
+        }
+        return true;
     }
 
     private static NbtCompound capture(ServerWorld world, BlockPos min, int sizeX, int sizeY, int sizeZ,
@@ -159,6 +209,10 @@ public final class SchematicScanner {
                             data.putShort("x", (short) x);
                             data.putShort("y", (short) y);
                             data.putShort("z", (short) z);
+                            if (blockEntities.size() >= SchematicLoader.MAX_BLOCK_ENTITIES) {
+                                throw new IllegalArgumentException("Block-entity count exceeds limit "
+                                        + SchematicLoader.MAX_BLOCK_ENTITIES);
+                            }
                             blockEntities.add(data);
                         }
                     }
@@ -216,6 +270,9 @@ public final class SchematicScanner {
             data.put("TileX", NbtInt.of(entity.getBlockPos().getX() - min.getX()));
             data.put("TileY", NbtInt.of(entity.getBlockPos().getY() - min.getY()));
             data.put("TileZ", NbtInt.of(entity.getBlockPos().getZ() - min.getZ()));
+            if (result.size() >= SchematicLoader.MAX_ENTITIES) {
+                throw new IllegalArgumentException("Entity count exceeds limit " + SchematicLoader.MAX_ENTITIES);
+            }
             result.add(data);
         }
         return result;

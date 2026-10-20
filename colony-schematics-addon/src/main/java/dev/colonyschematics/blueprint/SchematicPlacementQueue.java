@@ -36,7 +36,7 @@ import java.util.function.Function;
 public final class SchematicPlacementQueue {
     private static final int MAX_ACTIVE_JOBS = 8;
     private static final int MAX_SERVER_OPERATIONS_PER_TICK = 1024;
-    private static final int MAX_JOB_OPERATIONS_PER_TICK = 256;
+    private static final int MAX_JOB_OPERATIONS_PER_TICK = 128;
     private static final long UNLOADED_CHUNK_TIMEOUT_TICKS = 12_000L;
 
     private static final Map<UUID, PlacementJob> JOBS = new LinkedHashMap<>();
