@@ -4,12 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: ${{ github.event_name != 'issues' || startsWith(github.event.issue.title, '[build]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,7 +38,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/release
-          find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} build/release/ \;
+          find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' -exec cp {} build/release/ \\;
           test -n "$(find build/release -maxdepth 1 -type f -name '*.jar' -print -quit)"
 
       - name: Upload JAR artifact
