@@ -84,7 +84,11 @@ public final class SchematicLoader {
             if (input == null) throw new IOException("Bundled schematic resource was not found: " + resourcePath);
             root = NbtIo.readCompressed(input, NbtSizeTracker.of(MAX_NBT_BYTES));
         }
+        return fromNbt(id, root);
+    }
 
+    /** Parse an already-decoded blueprint, including user-created scan-tool blueprints. */
+    public static Schematic fromNbt(Identifier id, NbtCompound root) throws IOException {
         int sizeX = Short.toUnsignedInt(root.getShort("size_x").orElse((short) 0));
         int sizeY = Short.toUnsignedInt(root.getShort("size_y").orElse((short) 0));
         int sizeZ = Short.toUnsignedInt(root.getShort("size_z").orElse((short) 0));
