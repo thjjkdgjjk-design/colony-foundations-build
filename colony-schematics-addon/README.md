@@ -1,35 +1,38 @@
-# Colony Schematics — independent Fabric 1.21.5 add-on
+# Colony Schematics (separate mod)
 
-A separate Fabric mod JAR for opening a catalog and test-placing Structurize v1 NBT blueprints.
+A standalone Fabric 1.21.5 mod for cataloging, scanning, saving, and placing Structurize-style blueprints. It is separate from Colony Foundations (`colony_schematics` mod ID).
 
-## Current functionality
+## Downloads
 
-- Catalog of 20 citizen-house schematics (4 styles × 5 tiers).
-- Quarter-turn rotation and Structurize primary_offset anchor handling.
-- Palette and packed block-grid decoding.
-- Attempts to restore block-entity NBT and serialized entities after placing block states.
-- Reports required-mod metadata; unknown blocks are replaced with air.
-- Safe limits for NBT size and structure dimensions.
+The build workflow publishes this add-on as its own JAR:
+`colony-schematics-fabric-1.21.5-0.1.0-alpha.1.jar`.
 
-## Run
+## In-game controls
 
-1. Put the JAR in .minecraft/mods with Fabric Loader 0.16.14+ and Fabric API 0.119.5+ for Minecraft 1.21.5.
-2. Launch a test world and use Schematic Tool from the Functional item group in Creative mode.
-3. Select a house, choose rotation, and use Place (creative).
-4. Test in a backup world first. Placement overwrites blocks in the target structure volume.
+1. Put the JAR in `.minecraft/mods`; install Fabric API and run Java 22 as required by this build.
+2. In Creative mode, take **Инструмент чертежей** from the Functional item group.
+3. Right-click in the air to open the catalog. The list is requested from the server and is paginated; type to search and press Enter to refresh. Backspace removes a search character; Home clears the filter.
+4. Select a blueprint, choose a 90-degree rotation, and press **Place (creative)**.
+5. To scan a structure, use the tool to right-click a block for the first corner and then the opposite corner. The resulting **Свиток чертежа** stores palette, block states, block-entity NBT and entities and can be used to place a copy.
 
-## Known gaps versus Structurize
+## Loading the full MineColonies blueprint set
 
-This is not yet a complete Structurize port. It does not implement scan/save, mirroring/undo, visual block-model preview, palette replacement, tag/fluid/solid substitutions, requirement accounting, surface flattening, structure update handling, full NBT data fixing, or a survival build planner. Restoring modded block entities can fail if their mod is absent or their 1.20.1 NBT is incompatible with 1.21.5. This build has passed CI compilation only; actual in-game placement still needs testing.
+The JAR contains 20 built-in citizen-house examples. The separately delivered `colony-schematics-minecolonies-blueprints-1.21.5.zip` datapack contains 9,515 blueprint files from the MineColonies source archive uploaded for this port. Place the ZIP, without extracting it, in:
 
-## Build
+`<minecraft>/saves/<world>/datapacks/`
 
-Use JDK 22:
+Run `/reload` or re-enter the world. The mod scans enabled server datapacks under `data/colony_schematics/blueprints/` and sends the index to the client catalog. In multiplayer, install the mod on the server and the same datapack on the server, not just on the client.
 
-    gradle --no-daemon build
+The pack includes multiple architectural styles and buildings, but this does **not** mean all of the blocks those blueprints reference have been ported. Unsupported blocks are replaced with air. In particular, Domum Ornamentum and the remaining MineColonies dependency chain are not yet complete Fabric ports.
 
-The resulting file is build/libs/colony-schematics-fabric-1.21.5-0.1.0-alpha.1.jar.
+## Known limitations
 
-## Upstream source and resource licensing
+- This is an ongoing porting prototype, not a complete Structurize replacement.
+- Structure placement is Creative-only and can overwrite terrain.
+- Structurize metadata such as palette, packed block grid, required-mod metadata, primary anchor, block-entity NBT and entity NBT is read. The full old-to-new DataFixer pipeline, tag substitutions, survival materials and staged worker construction are not implemented.
+- Mirroring, undo/redo, a true per-block-model ghost renderer, obstruction/material planning and full client/server test coverage remain unfinished.
+- Blueprints are from the user's uploaded source archive. Review and follow the licenses applicable to each original asset; the JAR's public release does not bundle the 9,515-file datapack.
 
-The Structurize source is GPL-3.0. The MineColonies Java source is GPL-3.0, but its source/resources/assets/minecolonies/LICENSE explicitly says All Rights Reserved. The public schematics repository README describes the files as being for use in MineColonies, but does not establish an explicit blanket license in the pinned revision. Therefore this prototype includes only the limited 20-house set already used by its current CI; no broad claim is made that all original MineColonies art, assets, or blueprints can be redistributed freely. See root PORT_AUDIT.md and THIRD_PARTY_NOTICES.md.
+## Source and licensing
+
+This code port is distributed under GPL-3.0-only; a copy of the license is included. See `THIRD_PARTY_NOTICES.md`. MineColonies's own resource tree contains a separate `All Rights Reserved` notice for some assets, so the GPL on Java code must not be treated as an automatic license for every texture or other non-code resource.
