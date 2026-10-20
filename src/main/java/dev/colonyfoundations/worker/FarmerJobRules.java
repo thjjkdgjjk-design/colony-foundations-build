@@ -53,6 +53,11 @@ public final class FarmerJobRules {
         };
     }
 
+    /** Vanilla melon and pumpkin stems use an age property from 0 to 7. */
+    public static boolean isMatureStemAge(int age) {
+        return age >= 7;
+    }
+
     public static Optional<String> fruitBlockIdForStem(String stemBlockId) {
         if (stemBlockId == null) return Optional.empty();
         return switch (stemBlockId) {

@@ -10,6 +10,9 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.CropBlock;
+import net.minecraft.block.StemBlock;
+import net.minecraft.block.AttachedStemBlock;
+import net.minecraft.state.property.Properties;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
@@ -112,8 +115,8 @@ public final class CitizenJobController {
         BlockPos fieldPos = field.getPos();
         int radius = field.fieldRadius();
 
-        // Melon/pumpkin seeds grow a stem. A mature stem creates a separate adjacent fruit block;
-        // harvesting the stem itself would destroy the crop without yielding the fruit.
+        // A generated melon/pumpkin replaces StemBlock with AttachedStemBlock.
+        // Handle both a mature free stem and the attached stem that points at its fruit.
         if (hut.hasItemPathSuffix("_axe")) {
             var fruitId = FarmerJobRules.fruitBlockIdForStem(field.cropBlockId());
             if (fruitId.isPresent()) {
@@ -123,25 +126,38 @@ public final class CitizenJobController {
                         BlockPos stemPos = fieldPos.add(x, 0, z);
                         if (stemPos.equals(fieldPos) || !world.isChunkLoaded(stemPos)) continue;
                         BlockState stemState = world.getBlockState(stemPos);
-                        if (stemState.getBlock() != cropBlock
-                                || !(stemState.getBlock() instanceof CropBlock stem)
-                                || !stem.isMature(stemState)) continue;
-                        for (int dx = -1; dx <= 1; dx++) {
-                            for (int dz = -1; dz <= 1; dz++) {
-                                if (Math.abs(dx) + Math.abs(dz) != 1) continue;
-                                BlockPos fruitPos = stemPos.add(dx, 0, dz);
+
+                        if (stemState.getBlock() == cropBlock
+                                && stemState.getBlock() instanceof StemBlock
+                                && stemState.contains(Properties.AGE_7)
+                                && FarmerJobRules.isMatureStemAge(stemState.get(Properties.AGE_7))) {
+                            for (BlockPos offset : List.of(
+                                    new BlockPos(0, 0, -1), new BlockPos(0, 0, 1),
+                                    new BlockPos(-1, 0, 0), new BlockPos(1, 0, 0))) {
+                                BlockPos fruitPos = stemPos.add(offset);
                                 if (!world.isChunkLoaded(fruitPos)
                                         || !world.getBlockState(fruitPos).isOf(fruitBlock)) continue;
                                 List<ItemStack> drops = resolveDrops(Registries.BLOCK.getId(fruitBlock).getPath());
                                 if (!drops.isEmpty() && hut.canStoreItems(drops)) {
-                                    return new FieldAction(FieldActionType.HARVEST_FRUIT, fruitPos.toImmutable(), drops);
+                                    return new FieldAction(FieldActionType.HARVEST_FRUIT,
+                                            fruitPos.toImmutable(), drops);
                                 }
+                            }
+                        } else if (stemState.getBlock() instanceof AttachedStemBlock
+                                && stemState.contains(AttachedStemBlock.FACING)) {
+                            BlockPos fruitPos = stemPos.offset(stemState.get(AttachedStemBlock.FACING));
+                            if (!world.isChunkLoaded(fruitPos)
+                                    || !world.getBlockState(fruitPos).isOf(fruitBlock)) continue;
+                            List<ItemStack> drops = resolveDrops(Registries.BLOCK.getId(fruitBlock).getPath());
+                            if (!drops.isEmpty() && hut.canStoreItems(drops)) {
+                                return new FieldAction(FieldActionType.HARVEST_FRUIT,
+                                        fruitPos.toImmutable(), drops);
                             }
                         }
                     }
                 }
             } else {
-                // Normal Crops use the crop block itself as the harvest target.
+                // Ordinary crops implement CropBlock; stems do not inherit from CropBlock.
                 for (int x = -radius; x <= radius; x++) {
                     for (int z = -radius; z <= radius; z++) {
                         BlockPos cropPos = fieldPos.add(x, 0, z);
@@ -159,15 +175,22 @@ public final class CitizenJobController {
             }
         }
 
-        // Fertilizer acts on the configured crop/stem and remains a separate daily action.
+        // Bone meal supports both ordinary crops and the 0..7 age property on melon/pumpkin stems.
         if (hut.requestFertilizer() && hut.hasItem("minecraft:bone_meal")) {
             for (int x = -radius; x <= radius; x++) {
                 for (int z = -radius; z <= radius; z++) {
                     BlockPos cropPos = fieldPos.add(x, 0, z);
                     if (cropPos.equals(fieldPos) || !world.isChunkLoaded(cropPos)) continue;
                     BlockState cropState = world.getBlockState(cropPos);
-                    if (cropState.getBlock() instanceof CropBlock crop
-                            && cropState.getBlock() == cropBlock && !crop.isMature(cropState)) {
+                    if (cropState.getBlock() != cropBlock) continue;
+                    boolean immature = false;
+                    if (cropState.getBlock() instanceof CropBlock crop) {
+                        immature = !crop.isMature(cropState);
+                    } else if (cropState.getBlock() instanceof StemBlock
+                            && cropState.contains(Properties.AGE_7)) {
+                        immature = !FarmerJobRules.isMatureStemAge(cropState.get(Properties.AGE_7));
+                    }
+                    if (immature) {
                         return new FieldAction(FieldActionType.FERTILIZE, cropPos.toImmutable(), List.of());
                     }
                 }
@@ -253,12 +276,22 @@ public final class CitizenJobController {
             }
             case FERTILIZE -> {
                 BlockState oldState = world.getBlockState(target);
-                if (!(oldState.getBlock() instanceof CropBlock crop) || crop.isMature(oldState)
-                        || !oldState.getBlock().equals(blockForId(field.cropBlockId()))
+                if (!oldState.getBlock().equals(blockForId(field.cropBlockId()))
                         || !hut.hasItem("minecraft:bone_meal")) return false;
-                int age = crop.getAge(oldState);
-                if (age >= crop.getMaxAge()) return false;
-                if (!world.setBlockState(target, crop.withAge(age + 1), Block.NOTIFY_ALL)) return false;
+
+                BlockState grownState;
+                if (oldState.getBlock() instanceof CropBlock crop) {
+                    if (crop.isMature(oldState)) return false;
+                    grownState = crop.withAge(crop.getAge(oldState) + 1);
+                } else if (oldState.getBlock() instanceof StemBlock && oldState.contains(Properties.AGE_7)) {
+                    int age = oldState.get(Properties.AGE_7);
+                    if (FarmerJobRules.isMatureStemAge(age)) return false;
+                    grownState = oldState.with(Properties.AGE_7, age + 1);
+                } else {
+                    return false;
+                }
+
+                if (!world.setBlockState(target, grownState, Block.NOTIFY_ALL)) return false;
                 if (!hut.consumeItem("minecraft:bone_meal", 1)) {
                     world.setBlockState(target, oldState, Block.NOTIFY_ALL);
                     return false;

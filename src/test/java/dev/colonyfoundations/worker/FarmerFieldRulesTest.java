@@ -34,6 +34,9 @@ class FarmerFieldRulesTest {
         assertEquals("minecraft:pumpkin",
                 FarmerJobRules.fruitBlockIdForStem("minecraft:pumpkin_stem").orElseThrow());
         assertTrue(FarmerJobRules.fruitBlockIdForStem("minecraft:wheat").isEmpty());
+        assertFalse(FarmerJobRules.isMatureStemAge(6));
+        assertTrue(FarmerJobRules.isMatureStemAge(7));
+        assertTrue(FarmerJobRules.isMatureStemAge(8));
         assertEquals("minecraft:melon_slice",
                 FarmerJobRules.harvestItemsFor("melon").get(0).itemId());
         assertEquals(4, FarmerJobRules.harvestItemsFor("melon").get(0).count());
