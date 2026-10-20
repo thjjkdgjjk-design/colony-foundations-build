@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["PPP", "PBP", "CSC"],
+  "key": {
+    "P": {"item": "minecraft:spruce_planks"},
+    "B": {"item": "minecraft:bookshelf"},
+    "C": {"item": "minecraft:chest"},
+    "S": {"item": "minecraft:spruce_log"}
+  },
+  "result": {"id": "colony_foundations:town_hall", "count": 1}
+}
