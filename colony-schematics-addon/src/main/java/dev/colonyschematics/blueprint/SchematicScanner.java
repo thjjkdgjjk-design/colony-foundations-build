@@ -203,7 +203,7 @@ public final class SchematicScanner {
         Box bounds = new Box(min.getX(), min.getY(), min.getZ(),
                 min.getX() + sizeX, min.getY() + sizeY, min.getZ() + sizeZ);
         NbtList result = new NbtList();
-        for (Entity entity : world.getOtherEntities(null, bounds)) {
+        for (Entity entity : world.getOtherEntities(null, bounds, entity -> true)) {
             if (entity instanceof PlayerEntity || !entity.getType().isSaveable()) continue;
             NbtCompound data = new NbtCompound();
             if (!entity.saveNbt(data)) continue;
