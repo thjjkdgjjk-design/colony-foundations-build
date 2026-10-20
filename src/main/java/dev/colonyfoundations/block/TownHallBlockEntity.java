@@ -66,6 +66,7 @@ public final class TownHallBlockEntity extends BlockEntity {
     private int noProgressPathChecks;
     private int navigationFailures;
     private final Set<UUID> colonyMembers = new HashSet<>();
+    private final Map<UUID, Set<ColonyPermission>> colonyMemberPermissions = new HashMap<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TOWN_HALL, pos, state);
@@ -150,6 +151,35 @@ public final class TownHallBlockEntity extends BlockEntity {
         return Set.copyOf(colonyMembers);
     }
 
+    public Map<String, List<String>> colonyMemberPermissions() {
+        Map<String, List<String>> snapshot = new HashMap<>();
+        colonyMemberPermissions.forEach((member, permissions) -> snapshot.put(member.toString(),
+                permissions.stream().map(ColonyPermission::id).sorted().toList()));
+        return Map.copyOf(snapshot);
+    }
+
+    public boolean hasPermission(UUID playerUuid, ColonyPermission permission) {
+        if (playerUuid == null || permission == null) return false;
+        if (playerUuid.equals(ownerUuid)) return true;
+        return colonyMembers.contains(playerUuid)
+                && colonyMemberPermissions.getOrDefault(playerUuid, Set.of()).contains(permission);
+    }
+
+    public boolean setMemberPermission(ServerPlayerEntity owner, UUID memberUuid,
+                                       ColonyPermission permission, boolean enabled) {
+        if (!isOwner(owner) || memberUuid == null || permission == null
+                || !colonyMembers.contains(memberUuid)) return false;
+        Set<ColonyPermission> permissions = colonyMemberPermissions.computeIfAbsent(
+                memberUuid, ignored -> new HashSet<>());
+        boolean changed = enabled ? permissions.add(permission) : permissions.remove(permission);
+        if (permissions.isEmpty()) colonyMemberPermissions.remove(memberUuid);
+        if (changed) {
+            markDirty();
+            syncTerritoryClaim();
+        }
+        return changed;
+    }
+
     public boolean renameColony(ServerPlayerEntity owner, String requestedName) {
         if (!isOwner(owner)) {
             owner.sendMessage(Text.literal("[Колония] Только владелец может переименовать колонию."), true);
@@ -167,10 +197,11 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public boolean inviteMember(ServerPlayerEntity owner, ServerPlayerEntity target) {
-        if (!isOwner(owner)) return false;
+        if (!hasPermission(owner.getUuid(), ColonyPermission.MANAGE_MEMBERS)) return false;
         if (target.getUuid().equals(ownerUuid)) return true;
         boolean added = colonyMembers.add(target.getUuid());
         if (added) {
+            colonyMemberPermissions.remove(target.getUuid());
             markDirty();
             syncTerritoryClaim();
             target.sendMessage(Text.literal("[Колония] Вас добавили в колонию «" + colonyName() + "»."), false);
@@ -180,9 +211,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public boolean revokeMember(ServerPlayerEntity owner, UUID memberUuid) {
-        if (!isOwner(owner)) return false;
+        if (!hasPermission(owner.getUuid(), ColonyPermission.MANAGE_MEMBERS)) return false;
         boolean removed = colonyMembers.remove(memberUuid);
         if (removed) {
+            colonyMemberPermissions.remove(memberUuid);
             markDirty();
             syncTerritoryClaim();
         }
@@ -198,6 +230,12 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
+        if (!(player.getWorld() instanceof ServerWorld serverWorld) || colonyUuid == null
+                || ColonyClaimState.get(serverWorld).findColony(colonyUuid)
+                        .filter(claim -> claim.canPerform(player.getUuid(), ColonyPermission.BUILD_PROJECTS)).isEmpty()) {
+            player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
+            return;
+        }
         BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(newBlueprintId).orElse(null);
         if (definition == null || definition.placements().isEmpty()) {
             player.sendMessage(Text.literal("[Колония] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
@@ -709,6 +747,17 @@ public final class TownHallBlockEntity extends BlockEntity {
         NbtList membersTag = new NbtList();
         colonyMembers.stream().map(UUID::toString).sorted().forEach(member -> membersTag.add(NbtString.of(member)));
         nbt.put("ColonyMembers", membersTag);
+        NbtList memberPermissionEntries = new NbtList();
+        colonyMemberPermissions.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            NbtCompound permissionEntry = new NbtCompound();
+            permissionEntry.putString("PlayerUuid", entry.getKey().toString());
+            NbtList actions = new NbtList();
+            entry.getValue().stream().map(ColonyPermission::id).sorted()
+                    .forEach(action -> actions.add(NbtString.of(action)));
+            permissionEntry.put("Actions", actions);
+            memberPermissionEntries.add(permissionEntry);
+        });
+        nbt.put("ColonyMemberPermissions", memberPermissionEntries);
         NbtCompound stockTag = new NbtCompound();
         resourceStock.forEach((id, amount) -> stockTag.putInt(id.toString(), amount));
         nbt.put("ResourceStock", stockTag);
@@ -752,6 +801,24 @@ public final class TownHallBlockEntity extends BlockEntity {
                 members.getString(i).ifPresent(raw -> {
                     try { colonyMembers.add(UUID.fromString(raw)); }
                     catch (IllegalArgumentException ignored) { }
+                });
+            }
+        });
+        colonyMemberPermissions.clear();
+        nbt.getList("ColonyMemberPermissions").ifPresent(entries -> {
+            for (int i = 0; i < entries.size(); i++) {
+                entries.getCompound(i).ifPresent(entry -> {
+                    UUID memberUuid = ColonyIdentityRules.parseUuid(
+                            entry.getString("PlayerUuid").orElse("")).orElse(null);
+                    if (memberUuid == null || !colonyMembers.contains(memberUuid)) return;
+                    Set<ColonyPermission> actions = new HashSet<>();
+                    entry.getList("Actions").ifPresent(actionList -> {
+                        for (int j = 0; j < actionList.size(); j++) {
+                            actionList.getString(j).ifPresent(raw ->
+                                    ColonyPermission.parse(raw).ifPresent(actions::add));
+                        }
+                    });
+                    if (!actions.isEmpty()) colonyMemberPermissions.put(memberUuid, actions);
                 });
             }
         });

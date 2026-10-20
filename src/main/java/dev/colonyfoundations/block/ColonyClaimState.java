@@ -35,7 +35,10 @@ public final class ColonyClaimState extends PersistentState {
             Codec.STRING.optionalFieldOf("colony_id", "").forGetter(ClaimRecord::colonyId),
             Codec.STRING.optionalFieldOf("colony_name", "").forGetter(ClaimRecord::colonyName),
             Codec.STRING.optionalFieldOf("owner_name", "").forGetter(ClaimRecord::ownerName),
-            Codec.INT.optionalFieldOf("colony_level", 1).forGetter(ClaimRecord::colonyLevel)
+            Codec.INT.optionalFieldOf("colony_level", 1).forGetter(ClaimRecord::colonyLevel),
+            Codec.unboundedMap(Codec.STRING, Codec.list(Codec.STRING))
+                    .optionalFieldOf("member_permissions", Map.of())
+                    .forGetter(ClaimRecord::memberPermissions)
     ).apply(instance, ClaimRecord::new));
 
     private static final Codec<CitizenAssignment> CITIZEN_ASSIGNMENT_CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -110,6 +113,17 @@ public final class ColonyClaimState extends PersistentState {
     public UUID upsert(RegistryKey<World> dimension, BlockPos position, UUID owner,
                        Collection<UUID> members, UUID requestedColonyId,
                        String colonyName, String ownerName, int colonyLevel) {
+        String dimensionId = dimension.getValue().toString();
+        ClaimRecord previous = claims.get(recordKey(dimensionId, position.asLong()));
+        return upsert(dimension, position, owner, members, requestedColonyId,
+                colonyName, ownerName, colonyLevel,
+                previous == null ? Map.of() : previous.memberPermissions());
+    }
+
+    public UUID upsert(RegistryKey<World> dimension, BlockPos position, UUID owner,
+                       Collection<UUID> members, UUID requestedColonyId,
+                       String colonyName, String ownerName, int colonyLevel,
+                       Map<String, List<String>> memberPermissions) {
         if (owner == null) {
             remove(dimension, position);
             return null;
@@ -134,7 +148,7 @@ public final class ColonyClaimState extends PersistentState {
 
         ClaimRecord replacement = new ClaimRecord(
                 dimensionId, position.asLong(), owner.toString(), memberIds,
-                resolvedId.toString(), colonyName, ownerName, colonyLevel);
+                resolvedId.toString(), colonyName, ownerName, colonyLevel, memberPermissions);
         if (!replacement.equals(previous)) {
             claims.put(key, replacement);
             rebuildIndex();
@@ -381,7 +395,8 @@ public final class ColonyClaimState extends PersistentState {
     }
 
     public record ClaimRecord(String dimension, long position, String ownerUuid, List<String> members,
-                              String colonyId, String colonyName, String ownerName, int colonyLevel) {
+                              String colonyId, String colonyName, String ownerName, int colonyLevel,
+                              Map<String, List<String>> memberPermissions) {
         public ClaimRecord {
             dimension = dimension == null ? "" : dimension;
             ownerUuid = ownerUuid == null ? "" : ownerUuid;
@@ -391,11 +406,30 @@ public final class ColonyClaimState extends PersistentState {
             colonyName = colonyName == null ? "" : colonyName;
             ownerName = ownerName == null ? "" : ownerName;
             colonyLevel = Math.max(1, colonyLevel);
+            Map<String, List<String>> normalizedPermissions = new LinkedHashMap<>();
+            if (memberPermissions != null) {
+                memberPermissions.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                    String member = entry.getKey();
+                    if (member == null || !members.contains(member)
+                            || ColonyIdentityRules.parseUuid(member).isEmpty()) return;
+                    List<String> grants = entry.getValue() == null ? List.of()
+                            : entry.getValue().stream()
+                                    .filter(permission -> ColonyPermission.parse(permission).isPresent())
+                                    .distinct().sorted().toList();
+                    if (!grants.isEmpty()) normalizedPermissions.put(member, grants);
+                });
+            }
+            memberPermissions = Map.copyOf(normalizedPermissions);
         }
 
-        /** Preserve the original four-field record constructor for existing tests and internal callers. */
+        /** Preserve older record signatures as permissions migrate to the explicit action model. */
         public ClaimRecord(String dimension, long position, String ownerUuid, List<String> members) {
-            this(dimension, position, ownerUuid, members, "", "", "", 1);
+            this(dimension, position, ownerUuid, members, "", "", "", 1, Map.of());
+        }
+
+        public ClaimRecord(String dimension, long position, String ownerUuid, List<String> members,
+                           String colonyId, String colonyName, String ownerName, int colonyLevel) {
+            this(dimension, position, ownerUuid, members, colonyId, colonyName, ownerName, colonyLevel, Map.of());
         }
 
         public boolean hasIdentity() {
@@ -412,10 +446,20 @@ public final class ColonyClaimState extends PersistentState {
                     center.getX(), center.getZ(), target.getX(), target.getZ());
         }
 
+        /** Owner bypasses action grants; members only receive explicitly persisted actions. */
+        public boolean canPerform(UUID actor, ColonyPermission permission) {
+            if (actor == null || permission == null || !isValid()) return false;
+            String actorId = actor.toString();
+            if (ownerUuid.equals(actorId)) return true;
+            return members.contains(actorId)
+                    && memberPermissions.getOrDefault(actorId, List.of()).contains(permission.id());
+        }
+
+        /** Compatibility query: true only for an owner or a member with at least one grant. */
         public boolean canModify(UUID actor) {
             if (actor == null || !isValid()) return false;
-            String actorId = actor.toString();
-            return ownerUuid.equals(actorId) || members.contains(actorId);
+            if (ownerUuid.equals(actor.toString())) return true;
+            return java.util.Arrays.stream(ColonyPermission.values()).anyMatch(permission -> canPerform(actor, permission));
         }
 
         private boolean isValid() {

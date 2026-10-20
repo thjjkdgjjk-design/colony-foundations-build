@@ -94,3 +94,5 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 - New code stage: persisted `CitizenAssignment` records now share the Overworld `PersistentState` file with claims, preserving old saves via an optional `citizens` field. Assigning a worker requires a unique colony claim, a valid UUID/role/job and no other active assignment. This code is **Implemented** and awaiting its own CI run; no in-game testing has been performed.
 
 - Lifecycle follow-up: on villager entity load, an active durable assignment reconstructs its role/building/job tags; a released assignment clears stale assignment tags and retires the tombstone. This follow-up is **Implemented**, pending its own CI run and gameplay test.
+
+- Permission stage (this commit pending CI): per-member action grants persist on the Town Hall and claim record. Protection distinguishes breaks, block interaction and placement targets; project start and citizen assignment use their respective grants. This is **Implemented**, not yet **Verified**; shared rank presets/UI remain unported.

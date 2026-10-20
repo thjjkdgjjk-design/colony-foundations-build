@@ -76,7 +76,33 @@ class ColonyTerritoryRulesTest {
     }
 
     @Test
-    void onlyOwnerAndExplicitMembersMayModifyTerritory() {
+    void membershipDoesNotGrantEveryTerritoryPermissionByDefault() {
+        UUID owner = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        UUID stranger = UUID.randomUUID();
+        long position = new BlockPos(0, 64, 0).asLong();
+        ColonyClaimState.ClaimRecord noGrants = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", position, owner.toString(), List.of(member.toString()),
+                UUID.randomUUID().toString(), "Test", "Owner", 1);
+
+        assertTrue(noGrants.canPerform(owner, ColonyPermission.BREAK_BLOCKS));
+        assertFalse(noGrants.canPerform(member, ColonyPermission.BREAK_BLOCKS));
+        assertFalse(noGrants.canPerform(member, ColonyPermission.USE_BLOCKS));
+        assertFalse(noGrants.canPerform(stranger, ColonyPermission.BREAK_BLOCKS));
+
+        ColonyClaimState.ClaimRecord specificGrants = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", position, owner.toString(), List.of(member.toString()),
+                noGrants.colonyId(), "Test", "Owner", 1,
+                Map.of(member.toString(), List.of("break_blocks", "build_projects", "unknown_action")));
+        assertTrue(specificGrants.canPerform(member, ColonyPermission.BREAK_BLOCKS));
+        assertTrue(specificGrants.canPerform(member, ColonyPermission.BUILD_PROJECTS));
+        assertFalse(specificGrants.canPerform(member, ColonyPermission.PLACE_BLOCKS));
+        assertFalse(specificGrants.canPerform(member, ColonyPermission.USE_BLOCKS));
+        assertFalse(specificGrants.memberPermissions().get(member.toString()).contains("unknown_action"));
+    }
+
+    @Test
+    void membershipRulesStillRecognizeOwnerAndInvitedMembers() {
         UUID owner = UUID.randomUUID();
         UUID member = UUID.randomUUID();
         UUID stranger = UUID.randomUUID();

@@ -65,6 +65,12 @@ public final class ColonyHutBlock extends BlockWithEntity {
         }
 
         if (assignmentMode) {
+            ColonyClaimState.ClaimRecord claim = ColonyClaimState.get(serverWorld)
+                    .findColonyAt(serverWorld.getRegistryKey().getValue().toString(), pos).orElse(null);
+            if (claim == null || !claim.canPerform(serverPlayer.getUuid(), ColonyPermission.ASSIGN_WORKERS)) {
+                serverPlayer.sendMessage(Text.literal("You do not have assign_workers permission for this colony."), true);
+                return ActionResult.FAIL;
+            }
             Box searchArea = new Box(pos).expand(12.0);
             ColonyClaimState directory = ColonyClaimState.get(serverWorld);
             VillagerEntity worker = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,

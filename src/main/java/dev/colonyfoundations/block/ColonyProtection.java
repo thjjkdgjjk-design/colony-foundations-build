@@ -53,7 +53,7 @@ public final class ColonyProtection {
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
             if (!(world instanceof ServerWorld serverWorld)
                     || !(player instanceof ServerPlayerEntity serverPlayer)) return true;
-            if (!isDenied(serverWorld, pos, serverPlayer)) return true;
+            if (!isDenied(serverWorld, pos, serverPlayer, ColonyPermission.BREAK_BLOCKS)) return true;
             notifyDenied(serverWorld, serverPlayer, false);
             return false;
         });
@@ -70,7 +70,16 @@ public final class ColonyProtection {
 
             BlockPos clicked = hit.getBlockPos();
             BlockPos adjacent = clicked.offset(hit.getSide());
-            if (isDenied(serverWorld, clicked, serverPlayer) || isDenied(serverWorld, adjacent, serverPlayer)) {
+            boolean placingBlock = player.getStackInHand(hand).getItem() instanceof BlockItem;
+            boolean denied = isDenied(serverWorld, clicked, serverPlayer, ColonyPermission.USE_BLOCKS);
+            if (placingBlock) {
+                // Placing requires permission at the target position in addition to permission
+                // to interact with the supporting block that was clicked.
+                denied |= isDenied(serverWorld, adjacent, serverPlayer, ColonyPermission.PLACE_BLOCKS);
+            } else {
+                denied |= isDenied(serverWorld, adjacent, serverPlayer, ColonyPermission.USE_BLOCKS);
+            }
+            if (denied) {
                 notifyDenied(serverWorld, serverPlayer, true);
                 return ActionResult.FAIL;
             }
@@ -89,7 +98,8 @@ public final class ColonyProtection {
         if (world.getBlockEntity(stablePos) instanceof TownHallBlockEntity hall) {
             UUID durableId = ColonyClaimState.get(world).upsert(
                     world.getRegistryKey(), stablePos, hall.colonyOwnerUuid(), hall.colonyMembers(),
-                    hall.colonyUuid(), hall.colonyName(), hall.colonyOwnerName(), hall.colonyLevel());
+                    hall.colonyUuid(), hall.colonyName(), hall.colonyOwnerName(), hall.colonyLevel(),
+                    hall.colonyMemberPermissions());
             hall.setColonyUuid(durableId);
         }
     }
@@ -146,11 +156,12 @@ public final class ColonyProtection {
         return ownClaimFound;
     }
 
-    private static boolean isDenied(ServerWorld world, BlockPos target, ServerPlayerEntity player) {
+    private static boolean isDenied(ServerWorld world, BlockPos target, ServerPlayerEntity player,
+                                    ColonyPermission permission) {
         ColonyClaimState state = ColonyClaimState.get(world);
         String dimension = world.getRegistryKey().getValue().toString();
         for (ColonyClaimState.ClaimRecord claim : state.nearbyClaims(dimension, target)) {
-            if (claim.contains(target) && !claim.canModify(player.getUuid())) return true;
+            if (claim.contains(target) && !claim.canPerform(player.getUuid(), permission)) return true;
         }
         return false;
     }
