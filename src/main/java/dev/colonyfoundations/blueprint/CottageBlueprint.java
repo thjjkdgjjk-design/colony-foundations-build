@@ -2,18 +2,27 @@ package dev.colonyfoundations.blueprint;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.ArrayList;
 import java.util.List;
 
-/** A clean-room, block-by-block starter blueprint. Coordinates are relative to the ground block at its south-west corner. */
+/**
+ * Provides the starter cottage from data packs, with a built-in fallback so
+ * the town hall can still function if its JSON blueprint is absent or invalid.
+ */
 public final class CottageBlueprint {
     public record Placement(BlockPos offset, BlockState state) { }
-    private static final List<Placement> COTTAGE = createCottage();
+
+    private static final Identifier COTTAGE_ID = Identifier.of("colony_foundations", "cottage");
+    private static final List<Placement> BUILT_IN_COTTAGE = createCottage();
 
     private CottageBlueprint() { }
-    public static List<Placement> cottage() { return COTTAGE; }
+
+    public static List<Placement> cottage() {
+        return BlueprintRegistry.get(COTTAGE_ID).orElse(BUILT_IN_COTTAGE);
+    }
 
     private static List<Placement> createCottage() {
         List<Placement> plan = new ArrayList<>();
@@ -35,9 +44,15 @@ public final class CottageBlueprint {
                 add(plan, 6, y, z, wallState(6, y, z, logs, planks, glass));
             }
         }
-        for (int x = 0; x < 7; x++) for (int z = 0; z < 7; z++) add(plan, x, 5, z, planks);
-        for (int x = 1; x < 6; x++) for (int z = 1; z < 6; z++) add(plan, x, 6, z, planks);
-        for (int x = 2; x < 5; x++) for (int z = 2; z < 5; z++) add(plan, x, 7, z, planks);
+        for (int x = 0; x < 7; x++) {
+            for (int z = 0; z < 7; z++) add(plan, x, 5, z, planks);
+        }
+        for (int x = 1; x < 6; x++) {
+            for (int z = 1; z < 6; z++) add(plan, x, 6, z, planks);
+        }
+        for (int x = 2; x < 5; x++) {
+            for (int z = 2; z < 5; z++) add(plan, x, 7, z, planks);
+        }
         return List.copyOf(plan);
     }
 

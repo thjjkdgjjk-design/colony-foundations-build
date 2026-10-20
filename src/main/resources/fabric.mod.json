@@ -3,7 +3,7 @@
   "id": "colony_foundations",
   "version": "${version}",
   "name": "Colony Foundations (Fabric)",
-  "description": "An experimental colony-building prototype for Minecraft 1.21.5: recruit a villager builder and have them construct a small blueprint-built cottage.",
+  "description": "An experimental colony-building prototype for Minecraft 1.21.5 with data-pack driven blueprints and a villager builder.",
   "authors": ["Colony Foundations contributors"],
   "license": "MIT",
   "environment": "*",
