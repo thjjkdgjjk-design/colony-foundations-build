@@ -1,6 +1,7 @@
 package dev.colonyfoundations.item;
 
 import dev.colonyfoundations.block.TownHallBlockEntity;
+import dev.colonyfoundations.block.WorkerRoleRules;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
@@ -19,19 +20,23 @@ public final class BuilderRecruitment {
 
             if (world.isClient) return ActionResult.SUCCESS;
             if (villager.getCommandTags().contains(TownHallBlockEntity.BUILDER_TAG)) {
-                player.sendMessage(Text.literal("[Колония] Этот житель уже нанят строителем."), true);
+                player.sendMessage(Text.literal("Этот житель уже назначен строителем."), true);
+                return ActionResult.SUCCESS;
+            }
+            if (!WorkerRoleRules.canRecruitAsBuilder(villager.getCommandTags())) {
+                player.sendMessage(Text.literal("Этот житель уже назначен на другую работу. Сначала освободите его от текущего назначения."), true);
                 return ActionResult.SUCCESS;
             }
 
             if (!villager.addCommandTag(TownHallBlockEntity.BUILDER_TAG)) {
-                player.sendMessage(Text.literal("[Колония] Не удалось назначить роль строителя."), true);
+                player.sendMessage(Text.literal("Не удалось назначить роль строителя."), true);
                 return ActionResult.FAIL;
             }
 
             villager.setCustomName(Text.literal("Строитель"));
             villager.setCustomNameVisible(true);
             if (!player.getAbilities().creativeMode) held.decrement(1);
-            player.sendMessage(Text.literal("[Колония] Житель нанят строителем. Поставьте Town Hall и нажмите ПКМ, чтобы заказать коттедж."), false);
+            player.sendMessage(Text.literal("Житель назначен строителем. Поставьте ратушу и выберите чертёж в каталоге, чтобы начать строительство."), false);
             return ActionResult.SUCCESS;
         });
     }

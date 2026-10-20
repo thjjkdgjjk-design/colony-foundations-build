@@ -55,8 +55,7 @@ public final class ColonyHutBlock extends BlockWithEntity {
             Box searchArea = new Box(pos).expand(12.0);
             VillagerEntity worker = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
                             candidate -> !candidate.isRemoved()
-                                    && candidate.getCommandTags().stream().noneMatch(
-                                    tag -> tag.startsWith(ColonyHutBlockEntity.HUT_ASSIGNED_TAG_PREFIX)))
+                                    && WorkerRoleRules.canAssignToHut(candidate.getCommandTags()))
                     .stream()
                     .min(Comparator.comparingDouble(candidate -> candidate.squaredDistanceTo(
                             pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)))

@@ -67,11 +67,8 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
 
     public boolean assignWorker(ServerWorld serverWorld, VillagerEntity villager) {
         if (world != serverWorld || villager.isRemoved()) return false;
+        if (!WorkerRoleRules.canAssignToHut(villager.getCommandTags())) return false;
         String ownAssignmentTag = assignmentTag();
-
-        boolean assignedElsewhere = villager.getCommandTags().stream()
-                .anyMatch(tag -> tag.startsWith(HUT_ASSIGNED_TAG_PREFIX) && !tag.equals(ownAssignmentTag));
-        if (assignedElsewhere) return false;
 
         if (assignedCitizen != null && !assignedCitizen.equals(villager.getUuid())) {
             Entity previous = serverWorld.getEntity(assignedCitizen);

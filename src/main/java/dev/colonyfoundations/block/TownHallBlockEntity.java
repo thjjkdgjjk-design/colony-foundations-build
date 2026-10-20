@@ -35,8 +35,8 @@ import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtString;
 
 public final class TownHallBlockEntity extends BlockEntity {
-    public static final String BUILDER_TAG = "colony_foundations_builder";
-    private static final String ASSIGNED_TAG_PREFIX = "colony_foundations_assigned_";
+    public static final String BUILDER_TAG = WorkerRoleRules.BUILDER_TAG;
+    private static final String ASSIGNED_TAG_PREFIX = WorkerRoleRules.TOWN_HALL_ASSIGNMENT_PREFIX;
 
     private boolean projectActive;
     private boolean projectComplete;
@@ -315,7 +315,13 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (hall.assignedBuilderUuid != null) {
             var assigned = serverWorld.getEntity(hall.assignedBuilderUuid);
             if (assigned instanceof VillagerEntity villager && !villager.isRemoved()) {
+                if (WorkerRoleRules.hasForeignAssignment(villager.getCommandTags(), assignmentTag)) {
+                    hall.pauseForPlacementIssue(serverWorld, pos, villager.getBlockPos(),
+                            "Назначенный строитель также назначен на другую работу");
+                    return;
+                }
                 builder = villager;
+                if (!builder.getCommandTags().contains(BUILDER_TAG)) builder.addCommandTag(BUILDER_TAG);
                 hall.recordBuilderPosition(villager);
                 if (!builder.getCommandTags().contains(assignmentTag)) builder.addCommandTag(assignmentTag);
             } else if (hall.lastBuilderPosition == null || serverWorld.isChunkLoaded(hall.lastBuilderPosition)) {
@@ -333,12 +339,13 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (builder == null) {
             // Recover assignments saved by older versions before UUID tracking existed.
             builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
-                            villager -> villager.getCommandTags().contains(assignmentTag))
+                            villager -> villager.getCommandTags().contains(assignmentTag)
+                                    && !WorkerRoleRules.hasForeignAssignment(villager.getCommandTags(), assignmentTag))
                     .stream().findFirst().orElse(null);
             if (builder == null) {
                 builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
-                                villager -> villager.getCommandTags().contains(BUILDER_TAG)
-                                        && villager.getCommandTags().stream().noneMatch(tag -> tag.startsWith(ASSIGNED_TAG_PREFIX)))
+                                villager -> WorkerRoleRules.canContinueBuilderAssignment(
+                                        villager.getCommandTags(), assignmentTag))
                         .stream()
                         .min(Comparator.comparingDouble(v -> v.squaredDistanceTo(
                                 pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)))
