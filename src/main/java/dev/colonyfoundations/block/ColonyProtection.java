@@ -111,6 +111,50 @@ public final class ColonyProtection {
         if (byChunk.isEmpty()) TOWN_HALLS_BY_DIMENSION.remove(world.getRegistryKey());
     }
 
+    /**
+     * Worker construction is also a world mutation and must not bypass player protection events.
+     * The target must belong to its own Town Hall's claim and must not overlap any other founded claim.
+     */
+    public static boolean isConstructionAllowed(ServerWorld world, BlockPos ownHallPos, BlockPos target) {
+        if (!ColonyTerritoryRules.containsInitialClaim(
+                ownHallPos.getX(), ownHallPos.getZ(), target.getX(), target.getZ())) {
+            return false;
+        }
+
+        Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
+        if (byChunk == null) return true;
+        int targetChunkX = target.getX() >> 4;
+        int targetChunkZ = target.getZ() >> 4;
+
+        for (int dx = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
+             dx <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dx++) {
+            for (int dz = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
+                 dz <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dz++) {
+                long key = chunkKey(targetChunkX + dx, targetChunkZ + dz);
+                Set<BlockPos> halls = byChunk.get(key);
+                if (halls == null) continue;
+
+                Iterator<BlockPos> iterator = halls.iterator();
+                while (iterator.hasNext()) {
+                    BlockPos otherPos = iterator.next();
+                    if (otherPos.equals(ownHallPos) || !world.isChunkLoaded(otherPos)) continue;
+                    BlockEntity entity = world.getBlockEntity(otherPos);
+                    if (!(entity instanceof TownHallBlockEntity otherHall)) {
+                        iterator.remove();
+                        continue;
+                    }
+                    if (otherHall.isFounded() && ColonyTerritoryRules.containsInitialClaim(
+                            otherPos.getX(), otherPos.getZ(), target.getX(), target.getZ())) {
+                        return false;
+                    }
+                }
+                if (halls.isEmpty()) byChunk.remove(key);
+            }
+        }
+        if (byChunk.isEmpty()) TOWN_HALLS_BY_DIMENSION.remove(world.getRegistryKey());
+        return true;
+    }
+
     private static boolean isDenied(ServerWorld world, BlockPos target, ServerPlayerEntity player) {
         Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
         if (byChunk == null) return false;

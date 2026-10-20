@@ -459,6 +459,13 @@ public final class TownHallBlockEntity extends BlockEntity {
         BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation)
                 .subtract(rotate(definition.primaryOffset(), definition, hall.rotation)));
 
+        // Entity-driven construction bypasses player block events, so enforce claim ownership here too.
+        if (!ColonyProtection.isConstructionAllowed(serverWorld, pos, target)) {
+            hall.pauseForPlacementIssue(serverWorld, pos, target,
+                    "Целевая позиция находится вне территории этой колонии или в чужом поселении");
+            return;
+        }
+
         // Never force-load or silently write outside the active world bounds.
         if (target.getY() < serverWorld.getBottomY() || target.getY() >= serverWorld.getBottomY() + serverWorld.getDimension().height()) {
             hall.pauseForPlacementIssue(serverWorld, pos, target, "Целевая позиция вне высоты измерения");

@@ -273,3 +273,11 @@ CI compilation proves source compatibility with the compile environment only; it
 ### CI correction — null-safe block-entity type comparison
 
 - Run `39488777713` reported a NullPointerException in the negative unit test because `Identifier.tryParse(null)` throws. The type guard now rejects null strings before parsing. The placement queue already calls the guard for missing/invalid type IDs, so this also makes that malformed-data path non-throwing.
+
+
+## Проверка территории для строительного ИИ — 2026-10-20
+
+- Строитель ратуши размещает блоки через `ServerWorld.setBlockState`, а не от имени игрока; поэтому события защиты игроков сами по себе не защищают чужой claim от строительной очереди.
+- Перед каждым блоком активного заказа проверяется, что координата внутри четырёхчанкового начального claim собственной ратуши и не находится внутри другого основанного claim. При нарушении очередь сохраняет прогресс и останавливается с русской причиной, не пытаясь менять чужую территорию.
+- Проверка использует только индекс ратуш в текущем измерении и не загружает чужие чанки принудительно. Неизвестные/выгруженные чужие claims и границы от хижин остаются ограничениями текущей начальной модели.
+- Компиляция и unit-тесты ещё должны подтвердить эту итерацию; серверный сценарий с двумя соседними колониями не проверен в игре.
