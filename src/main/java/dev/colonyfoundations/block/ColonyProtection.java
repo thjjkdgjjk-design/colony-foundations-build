@@ -18,6 +18,7 @@ import net.minecraft.registry.RegistryKey;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -84,9 +85,16 @@ public final class ColonyProtection {
                 .computeIfAbsent(world.getRegistryKey(), ignored -> new HashMap<>())
                 .computeIfAbsent(chunkKey(stablePos.getX() >> 4, stablePos.getZ() >> 4), ignored -> new HashSet<>())
                 .add(stablePos);
+
+        if (world.getBlockEntity(stablePos) instanceof TownHallBlockEntity hall) {
+            ColonyClaimState.get(world).upsert(
+                    world.getRegistryKey(), stablePos, hall.colonyOwnerUuid(), hall.colonyMembers());
+        }
     }
 
     public static void unregisterTownHall(ServerWorld world, BlockPos pos) {
+        // Persistent record removal is independent of whether the chunk-index cache still exists.
+        ColonyClaimState.get(world).remove(world.getRegistryKey(), pos);
         Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
         if (byChunk == null) return;
         long key = chunkKey(pos.getX() >> 4, pos.getZ() >> 4);
@@ -121,71 +129,27 @@ public final class ColonyProtection {
             return false;
         }
 
-        Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
-        if (byChunk == null) return true;
-        int targetChunkX = target.getX() >> 4;
-        int targetChunkZ = target.getZ() >> 4;
-
-        for (int dx = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
-             dx <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dx++) {
-            for (int dz = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
-                 dz <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dz++) {
-                long key = chunkKey(targetChunkX + dx, targetChunkZ + dz);
-                Set<BlockPos> halls = byChunk.get(key);
-                if (halls == null) continue;
-
-                Iterator<BlockPos> iterator = halls.iterator();
-                while (iterator.hasNext()) {
-                    BlockPos otherPos = iterator.next();
-                    if (otherPos.equals(ownHallPos) || !world.isChunkLoaded(otherPos)) continue;
-                    BlockEntity entity = world.getBlockEntity(otherPos);
-                    if (!(entity instanceof TownHallBlockEntity otherHall)) {
-                        iterator.remove();
-                        continue;
-                    }
-                    if (otherHall.isFounded() && ColonyTerritoryRules.containsInitialClaim(
-                            otherPos.getX(), otherPos.getZ(), target.getX(), target.getZ())) {
-                        return false;
-                    }
-                }
-                if (halls.isEmpty()) byChunk.remove(key);
+        ColonyClaimState state = ColonyClaimState.get(world);
+        boolean ownClaimFound = false;
+        String dimension = world.getRegistryKey().getValue().toString();
+        for (ColonyClaimState.ClaimRecord claim : state.nearbyClaims(dimension, target)) {
+            if (!claim.contains(target)) continue;
+            if (claim.position() == ownHallPos.asLong() && claim.dimension().equals(dimension)) {
+                ownClaimFound = true;
+            } else {
+                // A worker is not a player permission principal: any overlap with another colony blocks writes.
+                return false;
             }
         }
-        if (byChunk.isEmpty()) TOWN_HALLS_BY_DIMENSION.remove(world.getRegistryKey());
-        return true;
+        return ownClaimFound;
     }
 
     private static boolean isDenied(ServerWorld world, BlockPos target, ServerPlayerEntity player) {
-        Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
-        if (byChunk == null) return false;
-
-        int targetChunkX = target.getX() >> 4;
-        int targetChunkZ = target.getZ() >> 4;
-        for (int dx = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
-             dx <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dx++) {
-            for (int dz = -ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS;
-                 dz <= ColonyTerritoryRules.INITIAL_RADIUS_CHUNKS; dz++) {
-                Set<BlockPos> halls = byChunk.get(chunkKey(targetChunkX + dx, targetChunkZ + dz));
-                if (halls == null || halls.isEmpty()) continue;
-
-                Iterator<BlockPos> iterator = halls.iterator();
-                while (iterator.hasNext()) {
-                    BlockPos hallPos = iterator.next();
-                    if (!world.isChunkLoaded(hallPos)) continue;
-                    BlockEntity blockEntity = world.getBlockEntity(hallPos);
-                    if (!(blockEntity instanceof TownHallBlockEntity hall)) {
-                        iterator.remove();
-                        continue;
-                    }
-                    if (!hall.isFounded()) continue;
-                    if (!ColonyTerritoryRules.containsInitialClaim(
-                            hallPos.getX(), hallPos.getZ(), target.getX(), target.getZ())) continue;
-                    if (!hall.canModifyTerritory(player)) return true;
-                }
-                if (halls.isEmpty()) byChunk.remove(chunkKey(targetChunkX + dx, targetChunkZ + dz));
-            }
+        ColonyClaimState state = ColonyClaimState.get(world);
+        String dimension = world.getRegistryKey().getValue().toString();
+        for (ColonyClaimState.ClaimRecord claim : state.nearbyClaims(dimension, target)) {
+            if (claim.contains(target) && !claim.canModify(player.getUuid())) return true;
         }
-        if (byChunk.isEmpty()) TOWN_HALLS_BY_DIMENSION.remove(world.getRegistryKey());
         return false;
     }
 

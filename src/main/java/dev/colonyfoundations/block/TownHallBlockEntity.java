@@ -81,6 +81,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         colonyName = "Колония " + ownerName;
         colonyLevel = 1;
         markDirty();
+        syncTerritoryClaim();
         player.sendMessage(Text.literal("[Колония] Колония «" + colonyName + "» основана. Ратуша теперь принадлежит вам."), false);
     }
 
@@ -102,6 +103,16 @@ public final class TownHallBlockEntity extends BlockEntity {
     /** True only after a player has explicitly founded this Town Hall. */
     public boolean isFounded() {
         return ownerUuid != null;
+    }
+
+    public UUID colonyOwnerUuid() {
+        return ownerUuid;
+    }
+
+    private void syncTerritoryClaim() {
+        if (world instanceof ServerWorld serverWorld) {
+            ColonyProtection.registerTownHall(serverWorld, pos);
+        }
     }
 
     /** Permission check with no side effect; protection must never auto-found a colony. */
@@ -146,6 +157,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         boolean added = colonyMembers.add(target.getUuid());
         if (added) {
             markDirty();
+            syncTerritoryClaim();
             target.sendMessage(Text.literal("[Колония] Вас добавили в колонию «" + colonyName() + "»."), false);
             owner.sendMessage(Text.literal("[Колония] Игрок " + target.getName().getString() + " получил доступ к колонии."), false);
         }
@@ -155,7 +167,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     public boolean revokeMember(ServerPlayerEntity owner, UUID memberUuid) {
         if (!isOwner(owner)) return false;
         boolean removed = colonyMembers.remove(memberUuid);
-        if (removed) markDirty();
+        if (removed) {
+            markDirty();
+            syncTerritoryClaim();
+        }
         return removed;
     }
 
