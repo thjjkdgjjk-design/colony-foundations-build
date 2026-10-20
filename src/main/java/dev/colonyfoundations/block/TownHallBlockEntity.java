@@ -70,8 +70,9 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     /**
-     * Claim a newly-placed hall for the first player who opens it. Ownership is persisted
-     * with the hall so other players cannot silently overwrite colony projects.
+     * Establish ownership only when the hall has not already been claimed.
+     * Normal player placement assigns the owner in TownHallBlock.onPlaced; this fallback
+     * remains for halls created by automation or restored without an owner field.
      */
     public void ensureFounded(PlayerEntity player) {
         if (ownerUuid != null) return;
