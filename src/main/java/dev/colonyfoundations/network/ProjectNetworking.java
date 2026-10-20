@@ -61,7 +61,6 @@ public final class ProjectNetworking {
     private static void sendStatus(ServerPlayerEntity player, BlockPos pos) {
         if (!isNear(player, pos)) return;
         if (!(player.getWorld().getBlockEntity(pos) instanceof TownHallBlockEntity hall)) return;
-        hall.ensureFounded(player);
         ServerPlayNetworking.send(player, new ProjectStatusPayload(
                 pos, hall.statusForScreen(), hall.siteOffsetX(), hall.siteOffsetZ()));
     }

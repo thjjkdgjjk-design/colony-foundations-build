@@ -83,16 +83,17 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public boolean canManage(PlayerEntity player) {
-        ensureFounded(player);
-        if (ownerUuid != null && (ownerUuid.equals(player.getUuid()) || colonyMembers.contains(player.getUuid()))) {
-            return true;
+        if (ownerUuid == null) {
+            player.sendMessage(Text.literal("[Колония] Сначала нажмите ПКМ по ратуше, чтобы основать колонию."), true);
+            return false;
         }
+        if (ColonyTerritoryRules.canModify(ownerUuid, colonyMembers, player.getUuid())) return true;
         player.sendMessage(Text.literal("[Колония] У вас нет прав на управление этой колонией."), true);
         return false;
     }
 
+    /** Permission queries are pure and must never claim an unowned Town Hall. */
     public boolean isOwner(PlayerEntity player) {
-        ensureFounded(player);
         return ownerUuid != null && ownerUuid.equals(player.getUuid());
     }
 

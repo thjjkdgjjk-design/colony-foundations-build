@@ -1,6 +1,7 @@
 package dev.colonyfoundations.block;
 
 import com.mojang.serialization.MapCodec;
+import dev.colonyfoundations.block.TownHallBlockEntity;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockWithEntity;
@@ -8,6 +9,7 @@ import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.BlockEntityTicker;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
@@ -32,6 +34,11 @@ public final class TownHallBlock extends BlockWithEntity {
 
     @Override
     protected ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, BlockHitResult hit) {
+        // Founding is an explicit server-side block interaction, never a side effect of a status packet.
+        if (!world.isClient && player instanceof ServerPlayerEntity serverPlayer
+                && world.getBlockEntity(pos) instanceof TownHallBlockEntity hall) {
+            hall.ensureFounded(serverPlayer);
+        }
         return ActionResult.SUCCESS;
     }
 
