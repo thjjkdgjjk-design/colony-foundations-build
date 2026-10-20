@@ -34,7 +34,8 @@ public record SchematicCatalogPayload(
             PacketCodecs.string(128), SchematicCatalogPayload::query,
             PacketCodecs.VAR_INT, SchematicCatalogPayload::totalPages,
             PacketCodecs.collection(ArrayList::new, Entry.CODEC, MAX_PACKET_ENTRIES),
-            SchematicCatalogPayload::new
+            (page, query, totalPages, entries) ->
+                    new SchematicCatalogPayload(page, query, totalPages, new ArrayList<>(entries))
     );
 
     public SchematicCatalogPayload {
