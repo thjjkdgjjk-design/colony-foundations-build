@@ -43,6 +43,12 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     private int buildingLevel = 1;
     private UUID assignedCitizen;
     private boolean enabled = true;
+    private String courierRequestId = "";
+    private String courierStage = "";
+    private long courierWarehousePosition;
+    private long courierTargetPosition;
+    private String courierCargoItemId = "";
+    private int courierCargoCount;
 
     public ColonyHutBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.COLONY_HUT, pos, state);
@@ -97,6 +103,84 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         }
         markDirty();
         return true;
+    }
+
+    public int countItem(String itemId) {
+        Identifier id = Identifier.tryParse(itemId);
+        if (id == null || !Registries.ITEM.containsId(id)) return 0;
+        int count = 0;
+        for (ItemStack stack : inventory) {
+            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).equals(id)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
+    }
+
+    /** Withdraw one stack of the requested item without touching other inventory slots. */
+    public ItemStack withdrawItem(String itemId, int maximumCount) {
+        if (maximumCount < 1) return ItemStack.EMPTY;
+        Identifier id = Identifier.tryParse(itemId);
+        if (id == null || !Registries.ITEM.containsId(id)) return ItemStack.EMPTY;
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            ItemStack stack = inventory.get(slot);
+            if (stack.isEmpty() || !Registries.ITEM.getId(stack.getItem()).equals(id)) continue;
+            return removeStack(slot, Math.min(maximumCount, stack.getCount()));
+        }
+        return ItemStack.EMPTY;
+    }
+
+    public boolean hasCourierTask() {
+        return !courierRequestId.isBlank() && !courierStage.isBlank();
+    }
+
+    public String courierRequestId() { return courierRequestId; }
+    public String courierStage() { return courierStage; }
+    public BlockPos courierWarehousePosition() { return BlockPos.fromLong(courierWarehousePosition); }
+    public BlockPos courierTargetPosition() { return BlockPos.fromLong(courierTargetPosition); }
+    public String courierCargoItemId() { return courierCargoItemId; }
+    public int courierCargoCount() { return courierCargoCount; }
+
+    public boolean beginCourierTask(String requestId, BlockPos warehouse, BlockPos target) {
+        if (requestId == null || requestId.isBlank() || warehouse == null || target == null
+                || hasCourierTask() || courierCargoCount > 0) return false;
+        courierRequestId = requestId;
+        courierWarehousePosition = warehouse.asLong();
+        courierTargetPosition = target.asLong();
+        courierStage = "to_warehouse";
+        markDirty();
+        return true;
+    }
+
+    public void setCourierStage(String stage) {
+        if (!"to_warehouse".equals(stage) && !"to_target".equals(stage)) return;
+        courierStage = stage;
+        markDirty();
+    }
+
+    public boolean setCourierCargo(String itemId, int amount) {
+        Identifier id = Identifier.tryParse(itemId);
+        if (id == null || !Registries.ITEM.containsId(id) || amount < 1
+                || amount > Registries.ITEM.get(id).getDefaultStack().getMaxCount()
+                || countItem(itemId) < amount) return false;
+        courierCargoItemId = id.toString();
+        courierCargoCount = amount;
+        markDirty();
+        return true;
+    }
+
+    public void clearCourierCargo() {
+        courierCargoItemId = "";
+        courierCargoCount = 0;
+        markDirty();
+    }
+
+    public void clearCourierTask() {
+        courierRequestId = "";
+        courierStage = "";
+        courierWarehousePosition = 0L;
+        courierTargetPosition = 0L;
+        markDirty();
     }
 
     public boolean hasItem(String itemId) {
@@ -302,6 +386,12 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         nbt.putInt("BuildingLevel", buildingLevel);
         nbt.putBoolean("Enabled", enabled);
         if (assignedCitizen != null) nbt.putString("AssignedCitizen", assignedCitizen.toString());
+        nbt.putString("CourierRequestId", courierRequestId);
+        nbt.putString("CourierStage", courierStage);
+        nbt.putLong("CourierWarehousePosition", courierWarehousePosition);
+        nbt.putLong("CourierTargetPosition", courierTargetPosition);
+        nbt.putString("CourierCargoItemId", courierCargoItemId);
+        nbt.putInt("CourierCargoCount", courierCargoCount);
         Inventories.writeNbt(nbt, inventory, registries);
     }
 
@@ -315,6 +405,23 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
             assignedCitizen = rawUuid.isBlank() ? null : UUID.fromString(rawUuid);
         } catch (IllegalArgumentException ignored) {
             assignedCitizen = null;
+        }
+        courierRequestId = nbt.getString("CourierRequestId").orElse("");
+        courierStage = nbt.getString("CourierStage").orElse("");
+        courierWarehousePosition = nbt.getLong("CourierWarehousePosition").orElse(0L);
+        courierTargetPosition = nbt.getLong("CourierTargetPosition").orElse(0L);
+        courierCargoItemId = nbt.getString("CourierCargoItemId").orElse("");
+        courierCargoCount = Math.max(0, Math.min(64, nbt.getInt("CourierCargoCount").orElse(0)));
+        if (courierCargoCount == 0 || Identifier.tryParse(courierCargoItemId) == null) {
+            courierCargoItemId = "";
+            courierCargoCount = 0;
+        }
+        if (courierRequestId.isBlank()
+                || (!courierStage.equals("to_warehouse") && !courierStage.equals("to_target"))) {
+            courierRequestId = "";
+            courierStage = "";
+            courierWarehousePosition = 0L;
+            courierTargetPosition = 0L;
         }
         inventory.clear();
         Inventories.readNbt(nbt, inventory, registries);

@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -101,6 +102,21 @@ public final class ColonyClaimState extends PersistentState {
             }
         }
         return List.copyOf(nearby);
+    }
+
+    /** Ambiguous overlapping claims fail closed: logistics never crosses colony ownership boundaries. */
+    public Optional<UUID> ownerAt(String dimension, BlockPos target) {
+        if (dimension == null || target == null) return Optional.empty();
+        java.util.Set<String> owners = new java.util.HashSet<>();
+        for (ClaimRecord claim : nearbyClaims(dimension, target)) {
+            if (claim.contains(target) && claim.isValid()) owners.add(claim.ownerUuid());
+        }
+        if (owners.size() != 1) return Optional.empty();
+        try {
+            return Optional.of(UUID.fromString(owners.iterator().next()));
+        } catch (IllegalArgumentException exception) {
+            return Optional.empty();
+        }
     }
 
     private Map<String, ClaimRecord> snapshot() {

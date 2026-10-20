@@ -161,6 +161,15 @@ public final class ColonyRequestState extends PersistentState {
                 .count();
     }
 
+    public boolean hasActiveRequest(UUID colonyOwner, String dimension, BlockPos target, Identifier itemId) {
+        if (colonyOwner == null || dimension == null || target == null || itemId == null) return false;
+        return requests.values().stream().anyMatch(request -> request.isActive()
+                && request.colonyOwnerUuid().equals(colonyOwner.toString())
+                && request.dimension().equals(dimension)
+                && request.targetPosition() == target.asLong()
+                && request.itemId().equals(itemId.toString()));
+    }
+
     private Optional<RequestRecord> transition(
             String requestId, long now,
             java.util.function.Function<ColonyRequestRules.Snapshot, Optional<ColonyRequestRules.Snapshot>> operation) {
