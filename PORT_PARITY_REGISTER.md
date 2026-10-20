@@ -29,7 +29,7 @@ The audited source baseline is primarily MineColonies/Structurize for Minecraft 
 | ID | Feature group to port | Official source | Current state | Dependencies | Completion criteria |
 |---|---|---|---|---|---|
 | CORE-01 | Founding, colony identity, owner, name, level, lifecycle | Official source and wiki above | Partial: Town Hall persists owner/name/level; no complete colony lifecycle | Persistent colony model, Town Hall, permissions, migration | Stable colony ID; found/delete/reactivate; migration and save/reload tests |
-| CORE-02 | Membership, invitations, revocation, access roles | Official wiki; exact semantics to verify | Partial: member UUIDs persist and internal methods exist; complete player workflow missing | CORE-01, networking/commands, claims | Owner-only changes, unauthorized rejection, offline/rejoin persistence and abuse tests |
+| CORE-02 | Membership, invitations, revocation, access roles | Official wiki; exact semantics to verify | Partial: member UUIDs persist and owner-only /colony invite and /colony revoke commands now exist; not build- or gameplay-verified | CORE-01, networking/commands, claims | Owner-only changes, unauthorized rejection, offline/rejoin persistence and abuse tests |
 | CORE-03 | Claims, boundaries, overlap, build/interaction protection | Official wiki; exact upstream settings to verify | Partial: fixed initial radius, persistent claim index and server hooks | CORE-01, PersistentState, server events | Break/place/use tests, overlapping claims, dimensions, unload/reload and removal |
 | CORE-04 | Player-to-colony mapping, deletion, migration and corruption recovery | MineColonies source | Missing/partial: claims persist globally; identity mainly resides in Town Hall block entity | CORE-01, CORE-03 | Identity independent of block entity; safe recovery from duplicate/corrupt records |
 | CIT-01 | Citizen entity, names, skills, traits, age/family, needs, happiness, disease, education | Official wiki/source; enumerate exact fields from pinned version | Missing: vanilla villagers are used for basic worker behavior | Colony model, custom entity/data, AI, UI, persistence | Each upstream field has behavior, sync, save/load and gameplay tests |
@@ -73,7 +73,7 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 
 ## Verification log — 2026-10-21
 
-- GitHub heads: main = 6aa8ae92a2ce4f6badfa446621911a7b6ed46b80; feat/courier-task-reassignment = 34429852184c1e58ff906b1153356609d8453697.
+- GitHub heads at initial audit: main = 6aa8ae92a2ce4f6badfa446621911a7b6ed46b80; feature branch has since advanced with the parity register and owner-management command commits.
 - Main Actions run #39503346438 succeeded for that exact main HEAD. The queried Actions endpoint returned no run for the feature commit, so feature CI is unconfirmed.
 - Code inventory confirms claim state/protection, Town Hall ownership/membership, blueprint catalog/queue, farmer logic, request state and a separate schematic add-on. This is not an in-game test.
-- No client launch, dedicated-server launch, multiplayer scenario or actual gameplay test was executed in this audit.
+- On 2026-10-21, an experimental owner command workflow was added: /colony info, /colony rename, /colony invite, /colony revoke. The workflow file was changed to include feat/** on push, but GitHub Actions did not report a run for the feature branch; the workflow is still only configured on main in the default-branch context, so this change is not verified by CI yet. Local git clone/build was unavailable because the execution environment could not resolve github.com. No client launch, dedicated-server launch, multiplayer scenario or actual gameplay test was executed in this audit.
