@@ -36,5 +36,10 @@
   "screen.colony_schematics.selection_status": "Выбран чертёж: %s",
   "screen.colony_schematics.mirror_front_back": "Перед/зад",
   "screen.colony_schematics.mirror_left_right": "Лево/право",
-  "screen.colony_schematics.mirror_off": "выкл."
+  "screen.colony_schematics.mirror_off": "выкл.",
+  "message.colony_schematics.placement_queued": "Размещение чертежа добавлено в очередь: блоков — %s. Работа будет выполняться постепенно, чтобы снизить нагрузку на сервер.",
+  "message.colony_schematics.placement_busy": "У вас уже есть активное размещение или очередь сервера заполнена. Дождитесь завершения и повторите попытку.",
+  "message.colony_schematics.waiting_for_chunk": "Размещение приостановлено до загрузки чанка (%s, %s). Подойдите к этой области, чтобы продолжить.",
+  "message.colony_schematics.placement_complete": "Размещение завершено: блоков — %s, блок-сущностей — %s, сущностей — %s, пропущено позиций — %s.",
+  "message.colony_schematics.placement_timeout": "Размещение отменено после длительного ожидания незагруженного чанка. Уже размещённые блоки остались в мире."
 }
