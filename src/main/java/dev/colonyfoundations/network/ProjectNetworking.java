@@ -15,12 +15,39 @@ public final class ProjectNetworking {
     public static void registerServer() {
         PayloadTypeRegistry.playC2S().register(SetProjectPayload.ID, SetProjectPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(RequestProjectStatusPayload.ID, RequestProjectStatusPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestBlueprintCatalogPayload.ID, RequestBlueprintCatalogPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ProjectStatusPayload.ID, ProjectStatusPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(BlueprintCatalogPayload.ID, BlueprintCatalogPayload.CODEC);
 
         ServerPlayNetworking.registerGlobalReceiver(SetProjectPayload.ID, (payload, context) ->
                 context.server().execute(() -> handle(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(RequestProjectStatusPayload.ID, (payload, context) ->
                 context.server().execute(() -> sendStatus(context.player(), payload.hallPos())));
+        ServerPlayNetworking.registerGlobalReceiver(RequestBlueprintCatalogPayload.ID, (payload, context) ->
+                context.server().execute(() -> sendCatalog(context.player(), payload)));
+    }
+
+    private static void sendCatalog(ServerPlayerEntity player, RequestBlueprintCatalogPayload request) {
+        BlockPos hallPos = request.hallPos();
+        if (!isNear(player, hallPos)
+                || !(player.getWorld().getBlockEntity(hallPos) instanceof TownHallBlockEntity)) return;
+
+        java.util.List<dev.colonyfoundations.blueprint.BlueprintDefinition> definitions =
+                BlueprintRegistry.allBuildDefinitions();
+        int total = definitions.size();
+        int totalPages = Math.max(1, (total + BlueprintCatalogPayload.PAGE_SIZE - 1)
+                / BlueprintCatalogPayload.PAGE_SIZE);
+        int page = Math.max(0, Math.min(request.page(), totalPages - 1));
+        int start = page * BlueprintCatalogPayload.PAGE_SIZE;
+        int end = Math.min(total, start + BlueprintCatalogPayload.PAGE_SIZE);
+        java.util.ArrayList<BlueprintCatalogPayload.Entry> entries = new java.util.ArrayList<>(end - start);
+        for (var definition : definitions.subList(start, end)) {
+            String size = definition.sizeX() + " × " + definition.sizeY() + " × " + definition.sizeZ();
+            entries.add(new BlueprintCatalogPayload.Entry(
+                    definition.id(), definition.title(), size, definition.placements().size()));
+        }
+        ServerPlayNetworking.send(player,
+                new BlueprintCatalogPayload(hallPos, page, totalPages, total, entries));
     }
 
     private static void handle(ServerPlayerEntity player, SetProjectPayload payload) {

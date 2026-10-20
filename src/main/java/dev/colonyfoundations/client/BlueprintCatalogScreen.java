@@ -2,6 +2,8 @@ package dev.colonyfoundations.client;
 
 import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
+import dev.colonyfoundations.network.BlueprintCatalogPayload;
+import dev.colonyfoundations.network.RequestBlueprintCatalogPayload;
 import dev.colonyfoundations.network.RequestProjectStatusPayload;
 import dev.colonyfoundations.network.SetProjectPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -21,13 +23,23 @@ import java.util.Map;
 
 /** In-game blueprint catalog, preview, material summary and live project controls. */
 public final class BlueprintCatalogScreen extends Screen {
-    private record Entry(String label, Identifier id) { }
-    private static final List<Entry> ENTRIES = makeEntries();
-    private static final int PAGE_SIZE = 5;
+    private record Entry(Identifier id, String label, String sizeSummary, int blockCount) { }
+    private static final int PAGE_SIZE = BlueprintCatalogPayload.PAGE_SIZE;
+    private static final Identifier COTTAGE_ID = Identifier.of("colony_foundations", "cottage");
+
+    private static Entry fallbackCottage() {
+        BlueprintDefinition definition = CottageBlueprint.defaultDefinition();
+        return new Entry(COTTAGE_ID, "Стартовый коттедж",
+                definition.sizeX() + " × " + definition.sizeY() + " × " + definition.sizeZ(),
+                definition.placements().size());
+    }
 
     private final BlockPos hallPos;
+    private List<Entry> entries = List.of(fallbackCottage());
     private int selected;
     private int page;
+    private int totalPages = 1;
+    private int totalEntries = 1;
     private int rotation;
     private int left;
     private int top;
@@ -66,24 +78,28 @@ public final class BlueprintCatalogScreen extends Screen {
         left = width / 2 - 220;
         top = height / 2 - 142;
 
-        int start = page * PAGE_SIZE;
-        int end = Math.min(ENTRIES.size(), start + PAGE_SIZE);
-        for (int i = start; i < end; i++) {
+        for (int i = 0; i < entries.size(); i++) {
             final int index = i;
-            String label = (selected == i ? "▶ " : "") + ENTRIES.get(i).label();
+            String label = (selected == i ? "▶ " : "") + entries.get(i).label();
             addDrawableChild(ButtonWidget.builder(Text.literal(label), button -> {
                 selected = index;
                 clearAndInit();
-            }).dimensions(left + 10, top + 34 + (i - start) * 18, 190, 18).build());
+            }).dimensions(left + 10, top + 34 + i * 18, 190, 18).build());
         }
 
         addDrawableChild(ButtonWidget.builder(Text.literal("◀"), button -> {
-            page = Math.max(0, page - 1);
-            clearAndInit();
+            if (page > 0) {
+                page--;
+                selected = 0;
+                clearAndInit();
+            }
         }).dimensions(left + 10, top + 128, 32, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("▶"), button -> {
-            page = Math.min((ENTRIES.size() - 1) / PAGE_SIZE, page + 1);
-            clearAndInit();
+            if (page + 1 < totalPages) {
+                page++;
+                selected = 0;
+                clearAndInit();
+            }
         }).dimensions(left + 168, top + 128, 32, 20).build());
 
         addDrawableChild(ButtonWidget.builder(Text.literal("←"), button -> moveSite(-2, 0))
@@ -110,6 +126,7 @@ public final class BlueprintCatalogScreen extends Screen {
                 .dimensions(left + 328, top + 260, 102, 20).build());
 
         requestStatus();
+        requestCatalog();
     }
 
     @Override
@@ -125,6 +142,27 @@ public final class BlueprintCatalogScreen extends Screen {
         if (client != null && client.getNetworkHandler() != null) {
             ClientPlayNetworking.send(new RequestProjectStatusPayload(hallPos));
         }
+    }
+
+    private void requestCatalog() {
+        if (client != null && client.getNetworkHandler() != null) {
+            ClientPlayNetworking.send(new RequestBlueprintCatalogPayload(hallPos, page));
+        }
+    }
+
+    public void updateCatalog(BlueprintCatalogPayload payload) {
+        if (!hallPos.equals(payload.hallPos()) || payload.page() != page) return;
+        List<Entry> updated = payload.entries().stream()
+                .map(entry -> new Entry(entry.id(), entry.title(), entry.sizeSummary(), entry.blockCount()))
+                .toList();
+        if (updated.isEmpty()) updated = List.of(fallbackCottage());
+        boolean changed = !entries.equals(updated)
+                || totalPages != payload.totalPages() || totalEntries != payload.totalEntries();
+        entries = List.copyOf(updated);
+        totalPages = Math.max(1, payload.totalPages());
+        totalEntries = Math.max(0, payload.totalEntries());
+        if (selected >= entries.size()) selected = Math.max(0, entries.size() - 1);
+        if (changed && client != null) clearAndInit();
     }
 
     private void moveSite(int dx, int dz) {
@@ -147,7 +185,7 @@ public final class BlueprintCatalogScreen extends Screen {
     }
 
     public Identifier previewBlueprintId() {
-        return ENTRIES.get(selected).id();
+        return entries.get(Math.max(0, Math.min(selected, entries.size() - 1))).id();
     }
 
     public int previewRotation() {
@@ -165,7 +203,8 @@ public final class BlueprintCatalogScreen extends Screen {
     private void send(int action) {
         if (client != null && client.getNetworkHandler() != null) {
             ClientPlayNetworking.send(new SetProjectPayload(
-                    hallPos, ENTRIES.get(selected).id(), rotation, siteOffsetX, siteOffsetZ, action));
+                    hallPos, entries.get(Math.max(0, Math.min(selected, entries.size() - 1))).id(),
+                    rotation, siteOffsetX, siteOffsetZ, action));
             if (action == 1 || action == 3) siteTouched = false;
         }
     }
@@ -180,16 +219,14 @@ public final class BlueprintCatalogScreen extends Screen {
         context.drawTextWithShadow(textRenderer, Text.literal("ПРЕДПРОСМОТР И МАТЕРИАЛЫ"),
                 left + 214, top + 23, 0xFFB9C9D8);
         context.drawCenteredTextWithShadow(textRenderer,
-                Text.literal("Страница " + (page + 1) + " / " + ((ENTRIES.size() + PAGE_SIZE - 1) / PAGE_SIZE)),
+                Text.literal("Страница " + (page + 1) + " / " + totalPages + " · схем: " + totalEntries),
                 left + 105, top + 135, 0xFFB9C9D8);
         context.drawTextWithShadow(textRenderer,
                 Text.literal("Площадка: " + siteOffsetX + ", " + siteOffsetZ), left + 12, top + 151, 0xFFB9C9D8);
 
-        Entry entry = ENTRIES.get(selected);
-        BlueprintDefinition definition = ColonyFoundationsClient.preview(entry.id());
-        if (definition == null && entry.id().getPath().equals("cottage")) {
-            definition = CottageBlueprint.defaultDefinition();
-        }
+        Entry entry = entries.get(Math.max(0, Math.min(selected, entries.size() - 1)));
+        BlueprintDefinition definition = COTTAGE_ID.equals(entry.id())
+                ? CottageBlueprint.defaultDefinition() : null;
 
         int previewLeft = left + 214;
         context.fill(previewLeft, top + 34, left + 427, top + 145, 0xFF202A33);
@@ -206,7 +243,13 @@ public final class BlueprintCatalogScreen extends Screen {
             drawMaterials(context, definition, previewLeft + 6, top + 151);
         } else {
             context.drawTextWithShadow(textRenderer,
-                    Text.literal("Схему нельзя прочитать"), previewLeft + 6, top + 60, 0xFFFF7777);
+                    Text.literal("Размер: " + entry.sizeSummary()), previewLeft + 6, top + 53, 0xFFD6E2EA);
+            context.drawTextWithShadow(textRenderer,
+                    Text.literal("Блоков: " + entry.blockCount()), previewLeft + 6, top + 64, 0xFFD6E2EA);
+            context.drawTextWithShadow(textRenderer,
+                    Text.literal("Нет точной клиентской геометрии"), previewLeft + 6, top + 82, 0xFFFFCC88);
+            context.drawTextWithShadow(textRenderer,
+                    Text.literal("Предпросмотр доступен для коттеджа"), previewLeft + 6, top + 94, 0xFFD6E2EA);
         }
 
         context.drawTextWithShadow(textRenderer, Text.literal("Статус колонии"), left + 12, top + 212, 0xFFB9C9D8);

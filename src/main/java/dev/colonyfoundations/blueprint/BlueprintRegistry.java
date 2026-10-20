@@ -80,6 +80,19 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         return BLUEPRINTS.values().stream().sorted(Comparator.comparing(BlueprintDefinition::title)).toList();
     }
 
+    /** Only server-available definitions, with the built-in cottage as a safe fallback. */
+    public static List<BlueprintDefinition> allBuildDefinitions() {
+        List<BlueprintDefinition> available = new ArrayList<>(BLUEPRINTS.values());
+        Identifier cottageId = Identifier.of(ColonyFoundations.MOD_ID, "cottage");
+        if (available.stream().noneMatch(definition -> definition.id().equals(cottageId))) {
+            available.add(CottageBlueprint.defaultDefinition());
+        }
+        return available.stream()
+                .sorted(Comparator.comparing(BlueprintDefinition::title)
+                        .thenComparing(definition -> definition.id().toString()))
+                .toList();
+    }
+
     @Override
     public Identifier getFabricId() {
         return Identifier.of(ColonyFoundations.MOD_ID, "blueprint_resources");
