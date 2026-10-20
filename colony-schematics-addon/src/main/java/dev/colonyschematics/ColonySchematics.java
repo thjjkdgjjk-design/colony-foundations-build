@@ -287,7 +287,7 @@ public final class ColonySchematics implements ModInitializer {
         }
 
         NbtList rotation = data.getList("Rotation").orElse(null);
-        if (rotation != null && rotation.size() >= 2 && turns != 0) {
+        if (rotation != null && rotation.size() >= 2 && (turns != 0 || mirrorMode != 0)) {
             float yaw = rotation.getFloat(0).orElse(0.0f);
             if (mirrorMode == 1) yaw = -yaw;
             if (mirrorMode == 2) yaw = 180.0f - yaw;
