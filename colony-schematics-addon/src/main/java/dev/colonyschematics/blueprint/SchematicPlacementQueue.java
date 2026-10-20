@@ -212,8 +212,7 @@ public final class SchematicPlacementQueue {
                 if (entityIndex < schematic.entities().size()) {
                     NbtCompound data = schematic.entities().get(entityIndex).copy();
                     Identifier entityId = Identifier.tryParse(data.getString("id").orElse(""));
-                    if (entityId == null || entityId.getPath().equals("player")
-                            || entityId.getPath().equals("command_block_minecart")) {
+                    if (entityId == null || SchematicSafetyRules.containsUnsafeEntityTree(data)) {
                         skippedPositions++;
                         entityIndex++;
                         used++;

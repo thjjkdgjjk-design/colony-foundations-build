@@ -215,8 +215,9 @@ public final class SchematicLoader {
             }
         }
 
-        List<BlockEntityPlacement> blockEntities = readBlockEntities(root, sizeX, sizeY, sizeZ);
-        List<NbtCompound> entities = readEntities(root);
+        List<BlockEntityPlacement> blockEntities = readBlockEntities(
+                root, sizeX, sizeY, sizeZ, compatibilityWarnings);
+        List<NbtCompound> entities = readEntities(root, compatibilityWarnings);
         List<String> requiredMods = readRequiredMods(root);
         BlockPos primaryOffset = readPrimaryOffset(root);
         String name = root.getString("name").orElse(displayName(id));
@@ -230,7 +231,7 @@ public final class SchematicLoader {
     }
 
     private static List<BlockEntityPlacement> readBlockEntities(
-            NbtCompound root, int sizeX, int sizeY, int sizeZ) {
+            NbtCompound root, int sizeX, int sizeY, int sizeZ, Set<String> compatibilityWarnings) {
         NbtList list = root.getList("tile_entities")
                 .or(() -> root.getList("block_entities"))
                 .orElse(new NbtList());
@@ -240,24 +241,45 @@ public final class SchematicLoader {
         List<BlockEntityPlacement> result = new ArrayList<>(list.size());
 
         for (int i = 0; i < list.size(); i++) {
-            NbtCompound tag = list.getCompound(i).orElse(null);
-            if (tag == null) continue;
+            final int entryIndex = i;
+            NbtCompound tag = list.getCompound(i).orElseThrow(
+                    () -> new IllegalArgumentException("Block-entity entry " + entryIndex + " is not a compound"));
+            String typeId = tag.getString("id").orElseThrow(
+                    () -> new IllegalArgumentException("Block-entity entry " + entryIndex + " is missing id"));
+            if (SchematicSafetyRules.isUnsafeBlockEntityId(typeId)) {
+                addCompatibilityWarning(compatibilityWarnings,
+                        "Данные служебного блока " + typeId + " запрещены и не импортированы");
+                continue;
+            }
             BlockPos pos = new BlockPos(readNumber(tag, "x"), readNumber(tag, "y"), readNumber(tag, "z"));
-            if (!inside(pos, sizeX, sizeY, sizeZ)) continue;
+            if (!inside(pos, sizeX, sizeY, sizeZ)) {
+                throw new IllegalArgumentException("Block-entity position is outside schematic bounds: " + pos);
+            }
             result.add(new BlockEntityPlacement(pos, tag));
         }
         return List.copyOf(result);
     }
 
-    private static List<NbtCompound> readEntities(NbtCompound root) {
+    private static List<NbtCompound> readEntities(NbtCompound root, Set<String> compatibilityWarnings) {
         NbtList list = root.getList("entities").orElse(new NbtList());
         if (list.size() > MAX_ENTITIES) {
             throw new IllegalArgumentException("Entity count exceeds limit " + MAX_ENTITIES);
         }
         List<NbtCompound> result = new ArrayList<>(list.size());
         for (int i = 0; i < list.size(); i++) {
-            NbtCompound tag = list.getCompound(i).orElse(null);
-            if (tag != null && !tag.isEmpty()) result.add(tag.copy());
+            final int entryIndex = i;
+            NbtCompound tag = list.getCompound(i).orElseThrow(
+                    () -> new IllegalArgumentException("Entity entry " + entryIndex + " is not a compound"));
+            if (tag.isEmpty() || tag.getString("id").isEmpty()) {
+                throw new IllegalArgumentException("Entity entry " + entryIndex + " is empty or missing id");
+            }
+            if (SchematicSafetyRules.containsUnsafeEntityTree(tag)) {
+                addCompatibilityWarning(compatibilityWarnings,
+                        "Опасная или неподдерживаемая сущность " + tag.getString("id").orElse("?")
+                                + " и её пассажиры не импортированы");
+                continue;
+            }
+            result.add(tag.copy());
         }
         return List.copyOf(result);
     }
@@ -301,6 +323,12 @@ public final class SchematicLoader {
         String name = tag.getString("Name")
                 .orElseThrow(() -> new IllegalArgumentException("Palette block is missing the Name field"));
         Identifier blockId = Identifier.tryParse(name);
+        if (blockId != null && SchematicSafetyRules.isUnsafeBlockId(blockId.toString())) {
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Блок " + name + " запрещён в импортируемых схемах и заменён воздухом");
+            ColonySchematics.LOGGER.warn("Unsafe schematic block {} was replaced with air", name);
+            return Blocks.AIR.getDefaultState();
+        }
         if (blockId == null || !Registries.BLOCK.containsId(blockId)) {
             addCompatibilityWarning(compatibilityWarnings,
                     "Блок " + name + " отсутствует и заменён воздухом");

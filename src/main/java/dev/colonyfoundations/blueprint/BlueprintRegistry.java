@@ -226,6 +226,10 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
 
     private static BlockState readBlockState(String rawId, JsonObject properties) {
         Identifier blockId = Identifier.tryParse(rawId);
+        if (blockId != null && SchematicSafetyRules.isUnsafeBlockId(blockId.toString())) {
+            ColonyFoundations.LOGGER.warn("Небезопасный блок {} в схеме заменён воздухом", rawId);
+            return Blocks.AIR.getDefaultState();
+        }
         if (blockId == null || !Registries.BLOCK.containsId(blockId)) {
             ColonyFoundations.LOGGER.warn("Blueprint references missing block {}; replacing it with air", rawId);
             return Blocks.AIR.getDefaultState();
