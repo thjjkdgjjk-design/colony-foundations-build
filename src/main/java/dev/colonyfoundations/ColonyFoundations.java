@@ -2,6 +2,7 @@ package dev.colonyfoundations;
 
 import dev.colonyfoundations.block.ModBlockEntities;
 import dev.colonyfoundations.block.ModBlocks;
+import dev.colonyfoundations.block.ModHuts;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.item.BuilderRecruitment;
 import dev.colonyfoundations.network.ProjectNetworking;
@@ -24,6 +25,7 @@ public final class ColonyFoundations implements ModInitializer {
     @Override
     public void onInitialize() {
         ModBlocks.initialize();
+        ModHuts.initialize();
         ModBlockEntities.initialize();
         ModItems.initialize();
         BuilderRecruitment.initialize();
@@ -33,8 +35,9 @@ public final class ColonyFoundations implements ModInitializer {
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(ModBlocks.TOWN_HALL);
             entries.add(ModItems.BUILDER_CONTRACT);
+            entries.addAll(ModHuts.items());
         });
 
-        LOGGER.info("Colony Foundations initialized with GUI construction and Structurize NBT import.");
+        LOGGER.info("Colony Foundations initialized: Town Hall, {} hut/utility blocks, construction queue and Structurize NBT import.", ModHuts.IDS.size());
     }
 }
