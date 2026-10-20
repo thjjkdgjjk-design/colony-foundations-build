@@ -27,6 +27,12 @@ public final class SchematicSafetyRules {
         return id != null && UNSAFE_BLOCK_IDS.contains(id);
     }
 
+    public static boolean blockEntityTypeMatches(String expectedId, String actualId) {
+        net.minecraft.util.Identifier expected = net.minecraft.util.Identifier.tryParse(expectedId);
+        net.minecraft.util.Identifier actual = net.minecraft.util.Identifier.tryParse(actualId);
+        return expected != null && expected.equals(actual);
+    }
+
     public static boolean isUnsafeBlockEntityId(String id) {
         return isUnsafeBlockId(id);
     }

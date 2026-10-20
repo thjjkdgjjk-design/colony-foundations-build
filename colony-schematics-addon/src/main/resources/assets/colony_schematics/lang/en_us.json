@@ -43,6 +43,7 @@
   "message.colony_schematics.waiting_for_chunk": "Placement is waiting for chunk (%s, %s) to load. Move closer to this area to continue.",
   "message.colony_schematics.placement_complete": "Placement complete: %s blocks, %s block entities, %s entities, %s skipped positions.",
   "message.colony_schematics.placement_timeout": "Placement was cancelled after waiting too long for an unloaded chunk. Blocks already placed remain in the world.",
+  "message.colony_schematics.block_entity_restore_skipped": "Block-entity data at (%s, %s, %s) is incompatible and was skipped. See the log for details.",
   "message.colony_schematics.scan_point_invalid": "The scan point must be within reach, inside the world border, and in a loaded chunk.",
   "message.colony_schematics.scan_dimension_changed": "The two points are in different dimensions. A new first corner has been selected here; click the second corner again.",
   "message.colony_schematics.scan_chunks_unloaded": "Some chunks in the selected area are not loaded. Move closer to the whole area and scan it again.",

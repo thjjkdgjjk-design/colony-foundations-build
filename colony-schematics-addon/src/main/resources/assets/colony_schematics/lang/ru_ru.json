@@ -43,6 +43,7 @@
   "message.colony_schematics.waiting_for_chunk": "Размещение приостановлено до загрузки чанка (%s, %s). Подойдите к этой области, чтобы продолжить.",
   "message.colony_schematics.placement_complete": "Размещение завершено: блоков — %s, блок-сущностей — %s, сущностей — %s, пропущено позиций — %s.",
   "message.colony_schematics.placement_timeout": "Размещение отменено после длительного ожидания незагруженного чанка. Уже размещённые блоки остались в мире.",
+  "message.colony_schematics.block_entity_restore_skipped": "Данные блока-сущности в позиции (%s, %s, %s) несовместимы и пропущены. Подробности — в журнале.",
   "message.colony_schematics.scan_point_invalid": "Точка сканирования должна быть в пределах досягаемости, внутри границы мира и в загруженном чанке.",
   "message.colony_schematics.scan_dimension_changed": "Точки находятся в разных измерениях. Здесь выбрана новая первая точка; нажмите на второй угол ещё раз.",
   "message.colony_schematics.scan_chunks_unloaded": "Не все чанки области загружены. Подойдите ближе ко всей области и повторите сканирование.",

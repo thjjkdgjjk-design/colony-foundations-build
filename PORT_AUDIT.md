@@ -17,6 +17,25 @@ Updated: 2026-10-20. This file is the working parity checklist, not a claim of c
 
 These counts are source scans, not an estimate of the complete number of required changes. The practical dependency order is BlockUI → Structurize and Domum Ornamentum → MultiPiston/TownTalk integrations → MineColonies core → optional add-ons.
 
+## Upstream schematic inventory at pinned CI revision
+
+The exact source tree `ldtteam/minecolonies-schematics@ae86ba500d3172220669657e0102861fa8b7f3be` was scanned via its Git tree API (tree not truncated). It contains 598 `.nbt` files, no `.blueprint` files, in nine style folders:
+
+| Style folder | NBT files |
+|---|---:|
+| `alternativestone` | 5 |
+| `alternativewooden` | 10 |
+| `birch` | 79 |
+| `darkoak` | 75 |
+| `defaultwooden` | 156 |
+| `mesa` | 60 |
+| `sandstone` | 91 |
+| `stone` | 44 |
+| `taiga` | 78 |
+| **Total** | **598** |
+
+The CI workflow bundles only 20 files from four style folders (`birch`, `darkoak`, `defaultwooden`, `stone`; citizen house tiers 1–5). Therefore the bundled catalogue is 20/598 files from the pinned upstream inventory and is not a full catalogue. This upstream Git-tree count is not a count of unique buildings or guaranteed-compatible schematics; it only counts filenames with the `.nbt` suffix.
+
 ## Current project layers
 
 ### Colony Foundations
@@ -235,3 +254,10 @@ CI compilation proves source compatibility with the compile environment only; it
 
 - Run `39488387547` stopped during compilation because the new safe status rendering uses `Optional<BlueprintDefinition>` without importing `java.util.Optional`.
 - Added the import; no tests ran in that failed build because compilation stopped first.
+
+
+## Безопасное восстановление block-entity данных — 2026-10-20
+
+- Перед применением NBT `SchematicPlacementQueue` сверяет сохранённый `id` с зарегистрированным типом block entity в целевой позиции. При несовпадении данные не применяются, запись считается пропущенной и выводится ограниченное по частоте русское предупреждение.
+- Восстановление каждой отдельной block entity обёрнуто в обработку `RuntimeException`; повреждённые данные записываются в журнал и не прерывают весь серверный цикл размещения.
+- Добавлены unit-тесты сравнения идентификаторов типов. Они не проверяют все реальные сериализаторы block entities в Minecraft; игровые контейнеры и modded BEs требуют отдельного теста.

@@ -18,6 +18,15 @@ class SchematicSafetyRulesTest {
     }
 
     @Test
+    void blockEntityNbtIsOnlyAppliedToTheSameRegisteredType() {
+        assertTrue(SchematicSafetyRules.blockEntityTypeMatches("minecraft:chest", "minecraft:chest"));
+        assertTrue(SchematicSafetyRules.blockEntityTypeMatches("modded:custom_machine", "modded:custom_machine"));
+        assertFalse(SchematicSafetyRules.blockEntityTypeMatches("minecraft:chest", "minecraft:barrel"));
+        assertFalse(SchematicSafetyRules.blockEntityTypeMatches("invalid id", "minecraft:chest"));
+        assertFalse(SchematicSafetyRules.blockEntityTypeMatches("minecraft:chest", null));
+    }
+
+    @Test
     void unsafePassengersAreRejectedEvenWhenTheRootEntityIsHarmless() {
         NbtCompound horse = new NbtCompound();
         horse.putString("id", "minecraft:horse");

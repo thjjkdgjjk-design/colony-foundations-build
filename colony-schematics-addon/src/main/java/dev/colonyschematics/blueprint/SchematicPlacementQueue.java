@@ -11,6 +11,7 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtDouble;
 import net.minecraft.nbt.NbtFloat;
 import net.minecraft.nbt.NbtList;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -123,6 +124,7 @@ public final class SchematicPlacementQueue {
         private int skippedPositions;
         private long lastProgressTick;
         private long lastChunkNoticeTick = Long.MIN_VALUE / 2;
+        private long lastBlockEntityNoticeTick = Long.MIN_VALUE / 2;
 
         private PlacementJob(UUID requester, ServerWorld world, SchematicLoader.Schematic schematic,
                              Identifier sourceId, BlockPos origin, int turns, int mirrorMode) {
@@ -192,16 +194,36 @@ public final class SchematicPlacementQueue {
                     BlockEntity blockEntity = world.getBlockEntity(target);
                     if (blockEntity == null) {
                         skippedPositions++;
+                        notifyBlockEntityRestoreIssue(server, target);
                     } else {
                         NbtCompound nbt = placement.nbt().copy();
-                        nbt.putInt("x", target.getX());
-                        nbt.putInt("y", target.getY());
-                        nbt.putInt("z", target.getZ());
-                        blockEntity.read(nbt, world.getRegistryManager());
-                        blockEntity.markDirty();
-                        BlockState state = world.getBlockState(target);
-                        world.updateListeners(target, state, state, net.minecraft.block.Block.NOTIFY_ALL);
-                        blockEntitiesPlaced++;
+                        String schematicType = nbt.getString("id").orElse("");
+                        Identifier actualType = Registries.BLOCK_ENTITY_TYPE.getId(blockEntity.getType());
+                        if (!SchematicSafetyRules.blockEntityTypeMatches(
+                                schematicType, actualType == null ? null : actualType.toString())) {
+                            skippedPositions++;
+                            ColonySchematics.LOGGER.warn(
+                                    "Skipped schematic block entity at {}: expected type {}, found {}",
+                                    target, schematicType, actualType);
+                            notifyBlockEntityRestoreIssue(server, target);
+                        } else {
+                            nbt.putInt("x", target.getX());
+                            nbt.putInt("y", target.getY());
+                            nbt.putInt("z", target.getZ());
+                            try {
+                                blockEntity.read(nbt, world.getRegistryManager());
+                                blockEntity.markDirty();
+                                BlockState state = world.getBlockState(target);
+                                world.updateListeners(target, state, state, net.minecraft.block.Block.NOTIFY_ALL);
+                                blockEntitiesPlaced++;
+                            } catch (RuntimeException exception) {
+                                skippedPositions++;
+                                ColonySchematics.LOGGER.warn(
+                                        "Failed to restore schematic block entity {} at {}; skipping this entry",
+                                        schematicType, target, exception);
+                                notifyBlockEntityRestoreIssue(server, target);
+                            }
+                        }
                     }
                     blockEntityIndex++;
                     used++;
@@ -308,6 +330,16 @@ public final class SchematicPlacementQueue {
             ServerPlayerEntity player = server.getPlayerManager().getPlayer(requester);
             if (player != null) {
                 player.sendMessage(Text.translatable("message.colony_schematics.placement_timeout"), true);
+            }
+        }
+
+        private void notifyBlockEntityRestoreIssue(MinecraftServer server, BlockPos target) {
+            if (world.getTime() - lastBlockEntityNoticeTick < 100L) return;
+            lastBlockEntityNoticeTick = world.getTime();
+            ServerPlayerEntity player = server.getPlayerManager().getPlayer(requester);
+            if (player != null) {
+                player.sendMessage(Text.translatable("message.colony_schematics.block_entity_restore_skipped",
+                        target.getX(), target.getY(), target.getZ()), true);
             }
         }
     }
