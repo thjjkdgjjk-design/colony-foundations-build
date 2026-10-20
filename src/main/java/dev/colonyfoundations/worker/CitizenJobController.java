@@ -423,6 +423,19 @@ public final class CitizenJobController {
 
         courierHut.ensureCourierTransferId();
         String transferId = courierHut.courierTransferId();
+        // The hut persists the task independently of the villager UUID. Adopt it only when
+        // the same task and transfer token are still present on this hut.
+        if (!request.courierUuid().equals(courier.getUuid().toString())) {
+            java.util.UUID previousCourier;
+            try {
+                previousCourier = java.util.UUID.fromString(request.courierUuid());
+            } catch (IllegalArgumentException exception) {
+                return;
+            }
+            request = requests.reassignCourier(requestId, previousCourier, courier.getUuid(),
+                    transferId, world.getTime()).orElse(null);
+            if (request == null) return;
+        }
         // Queue state proves this exact payload has already been counted even if its receipt
         // aged out of the bounded block-entity journal: never route that carrier copy again.
         if (courierHut.courierCargoCount() > 0 && request.lastTransferId().equals(transferId)) {
