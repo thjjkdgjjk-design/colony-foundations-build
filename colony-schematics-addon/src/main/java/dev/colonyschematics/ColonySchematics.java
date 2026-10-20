@@ -3,6 +3,7 @@ package dev.colonyschematics;
 import dev.colonyschematics.blueprint.SchematicLoader;
 import dev.colonyschematics.blueprint.SchematicScanner;
 import dev.colonyschematics.blueprint.SchematicTransform;
+import dev.colonyschematics.blueprint.SchematicPlacementQueue;
 import dev.colonyschematics.network.PlaceStoredBlueprintPayload;
 import dev.colonyschematics.network.SelectSchematicCornerPayload;
 import dev.colonyschematics.network.PlaceSchematicPayload;
@@ -71,6 +72,7 @@ public final class ColonySchematics implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        SchematicPlacementQueue.initialize();
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(SCHEMATIC_TOOL);
             entries.add(BLUEPRINT_SCROLL);
@@ -171,146 +173,7 @@ public final class ColonySchematics implements ModInitializer {
 
     private static void placeLoadedSchematic(ServerPlayerEntity player, SchematicLoader.Schematic schematic,
                                              int requestedRotation, int requestedMirror, Identifier sourceId) {
-        int turns = Math.floorMod(requestedRotation, 4);
-        int mirrorMode = Math.floorMod(requestedMirror, 3);
-        BlockMirror blockMirror = switch (mirrorMode) {
-            case 1 -> BlockMirror.FRONT_BACK;
-            case 2 -> BlockMirror.LEFT_RIGHT;
-            default -> BlockMirror.NONE;
-        };
-        BlockRotation blockRotation = switch (turns) {
-            case 1 -> BlockRotation.CLOCKWISE_90;
-            case 2 -> BlockRotation.CLOCKWISE_180;
-            case 3 -> BlockRotation.COUNTERCLOCKWISE_90;
-            default -> BlockRotation.NONE;
-        };
-
-        ServerWorld world = player.getServerWorld();
-        Direction facing = player.getHorizontalFacing();
-        BlockPos requestedAnchor = player.getBlockPos().offset(facing, 4);
-        BlockPos anchorOffset = SchematicTransform.transformBlockPos(schematic.primaryOffset(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
-        BlockPos origin = requestedAnchor.subtract(anchorOffset);
-
-        int placed = 0;
-        int skipped = 0;
-        for (SchematicLoader.BlockPlacement placement : schematic.blocks()) {
-            BlockPos local = SchematicTransform.transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
-            BlockPos target = origin.add(local);
-            if (!insideWorld(world, target)) {
-                skipped++;
-                continue;
-            }
-
-            BlockState state = placement.state().mirror(blockMirror).rotate(blockRotation);
-            if (world.setBlockState(target, state, Block.NOTIFY_ALL)) {
-                placed++;
-            }
-        }
-
-        int blockEntitiesPlaced = 0;
-        int blockEntitiesSkipped = 0;
-        for (SchematicLoader.BlockEntityPlacement placement : schematic.blockEntities()) {
-            BlockPos local = SchematicTransform.transformBlockPos(placement.position(), schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
-            BlockPos target = origin.add(local);
-            if (!insideWorld(world, target)) {
-                blockEntitiesSkipped++;
-                continue;
-            }
-            BlockEntity blockEntity = world.getBlockEntity(target);
-            if (blockEntity == null) {
-                blockEntitiesSkipped++;
-                continue;
-            }
-            NbtCompound nbt = placement.nbt().copy();
-            nbt.putInt("x", target.getX());
-            nbt.putInt("y", target.getY());
-            nbt.putInt("z", target.getZ());
-            blockEntity.read(nbt, world.getRegistryManager());
-            blockEntity.markDirty();
-            BlockState state = world.getBlockState(target);
-            world.updateListeners(target, state, state, Block.NOTIFY_ALL);
-            blockEntitiesPlaced++;
-        }
-
-        int entitiesPlaced = placeEntities(world, schematic, origin, turns, mirrorMode);
-        player.sendMessage(Text.translatable("message.colony_schematics.placed",
-                placed, schematic.sizeX(), schematic.sizeY(), schematic.sizeZ()), false);
-        player.sendMessage(Text.translatable("message.colony_schematics.placement_details",
-                blockEntitiesPlaced, entitiesPlaced, skipped + blockEntitiesSkipped), false);
-        if (!schematic.requiredMods().isEmpty()) {
-            player.sendMessage(Text.translatable("message.colony_schematics.required_mods",
-                    String.join(", ", schematic.requiredMods())), false);
-        }
+        SchematicPlacementQueue.enqueue(player, schematic, requestedRotation, requestedMirror, sourceId);
     }
 
-    private static int placeEntities(ServerWorld world, SchematicLoader.Schematic schematic,
-                                     BlockPos origin, int turns, int mirrorMode) {
-        int placed = 0;
-        for (NbtCompound original : schematic.entities()) {
-            NbtCompound data = original.copy();
-            Identifier entityId = Identifier.tryParse(data.getString("id").orElse(""));
-            if (entityId == null || entityId.getPath().equals("player")
-                    || entityId.getPath().equals("command_block_minecart")) {
-                continue;
-            }
-
-            transformEntityTree(data, origin, schematic.sizeX(), schematic.sizeZ(), turns, mirrorMode);
-            Entity entity = EntityType.loadEntityWithPassengers(data, world, SpawnReason.LOAD, Function.identity());
-            if (entity == null || !entity.getType().isSaveable()) continue;
-            if (world.getWorldBorder().contains(entity.getBlockPos()) && world.spawnEntity(entity)) placed++;
-        }
-        return placed;
-    }
-
-    private static void transformEntityTree(NbtCompound data, BlockPos origin, int sx, int sz, int turns, int mirrorMode) {
-        NbtList position = data.getList("Pos").orElse(null);
-        if (position != null && position.size() >= 3) {
-            double x = position.getDouble(0).orElse(0.0);
-            double y = position.getDouble(1).orElse(0.0);
-            double z = position.getDouble(2).orElse(0.0);
-            double mx = x;
-            double mz = z;
-            if (mirrorMode == 1) mz = sz - mz;
-            if (mirrorMode == 2) mx = sx - mx;
-            double rx;
-            double rz;
-            switch (turns) {
-                case 1 -> { rx = sz - mz; rz = mx; }
-                case 2 -> { rx = sx - mx; rz = sz - mz; }
-                case 3 -> { rx = mz; rz = sx - mx; }
-                default -> { rx = mx; rz = mz; }
-            }
-            NbtList transformed = new NbtList();
-            transformed.add(NbtDouble.of(origin.getX() + rx));
-            transformed.add(NbtDouble.of(origin.getY() + y));
-            transformed.add(NbtDouble.of(origin.getZ() + rz));
-            data.put("Pos", transformed);
-        }
-
-        NbtList rotation = data.getList("Rotation").orElse(null);
-        if (rotation != null && rotation.size() >= 2 && (turns != 0 || mirrorMode != 0)) {
-            float yaw = rotation.getFloat(0).orElse(0.0f);
-            if (mirrorMode == 1) yaw = -yaw;
-            if (mirrorMode == 2) yaw = 180.0f - yaw;
-            yaw += 90.0f * turns;
-            NbtList transformed = new NbtList();
-            transformed.add(NbtFloat.of(yaw));
-            transformed.add(NbtFloat.of(rotation.getFloat(1).orElse(0.0f)));
-            data.put("Rotation", transformed);
-        }
-
-        NbtList passengers = data.getList("Passengers").orElse(null);
-        if (passengers != null) {
-            for (int i = 0; i < passengers.size(); i++) {
-                Optional<NbtCompound> passenger = passengers.getCompound(i);
-                passenger.ifPresent(tag -> transformEntityTree(tag, origin, sx, sz, turns, mirrorMode));
-            }
-        }
-    }
-
-    private static boolean insideWorld(ServerWorld world, BlockPos pos) {
-        return pos.getY() >= world.getBottomY()
-                && pos.getY() < world.getBottomY() + world.getDimension().height()
-                && world.getWorldBorder().contains(pos);
-    }
 }
