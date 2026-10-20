@@ -38,7 +38,7 @@ class ColonyTerritoryRulesTest {
 
         assertEquals(List.of(claim), state.nearbyClaims("minecraft:overworld", new BlockPos(79, 70, -64)));
         assertTrue(claim.canModify(owner));
-        assertTrue(claim.canModify(member));
+        assertFalse(claim.canModify(member)); // membership alone no longer grants any action permission
         assertFalse(claim.canModify(UUID.randomUUID()));
         assertTrue(state.nearbyClaims("minecraft:the_nether", new BlockPos(1, 70, 1)).isEmpty());
     }
