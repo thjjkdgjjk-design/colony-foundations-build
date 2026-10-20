@@ -87,8 +87,10 @@ public final class ColonyProtection {
                 .add(stablePos);
 
         if (world.getBlockEntity(stablePos) instanceof TownHallBlockEntity hall) {
-            ColonyClaimState.get(world).upsert(
-                    world.getRegistryKey(), stablePos, hall.colonyOwnerUuid(), hall.colonyMembers());
+            UUID durableId = ColonyClaimState.get(world).upsert(
+                    world.getRegistryKey(), stablePos, hall.colonyOwnerUuid(), hall.colonyMembers(),
+                    hall.colonyUuid(), hall.colonyName(), hall.colonyOwnerName(), hall.colonyLevel());
+            hall.setColonyUuid(durableId);
         }
     }
 

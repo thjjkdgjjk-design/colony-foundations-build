@@ -31,7 +31,11 @@ public final class ColonyClaimState extends PersistentState {
             Codec.STRING.fieldOf("dimension").forGetter(ClaimRecord::dimension),
             Codec.LONG.fieldOf("position").forGetter(ClaimRecord::position),
             Codec.STRING.fieldOf("owner").forGetter(ClaimRecord::ownerUuid),
-            Codec.list(Codec.STRING).optionalFieldOf("members", List.of()).forGetter(ClaimRecord::members)
+            Codec.list(Codec.STRING).optionalFieldOf("members", List.of()).forGetter(ClaimRecord::members),
+            Codec.STRING.optionalFieldOf("colony_id", "").forGetter(ClaimRecord::colonyId),
+            Codec.STRING.optionalFieldOf("colony_name", "").forGetter(ClaimRecord::colonyName),
+            Codec.STRING.optionalFieldOf("owner_name", "").forGetter(ClaimRecord::ownerName),
+            Codec.INT.optionalFieldOf("colony_level", 1).forGetter(ClaimRecord::colonyLevel)
     ).apply(instance, ClaimRecord::new));
 
     private static final Codec<ColonyClaimState> CODEC = Codec.unboundedMap(Codec.STRING, CLAIM_CODEC)
@@ -57,25 +61,53 @@ public final class ColonyClaimState extends PersistentState {
         return storageWorld.getPersistentStateManager().getOrCreate(TYPE);
     }
 
+    /** Backwards-compatible entry point for callers without colony metadata. */
     public void upsert(RegistryKey<World> dimension, BlockPos position, UUID owner, Collection<UUID> members) {
+        upsert(dimension, position, owner, members, null, "", "", 1);
+    }
+
+    /**
+     * Persist colony identity and display metadata alongside the claim. The record is stored
+     * in Overworld PersistentState, so these details remain queryable while the Town Hall chunk
+     * is unloaded. A legacy record keeps its identity; otherwise an older save receives a
+     * deterministic identity based on dimension, position and owner.
+     *
+     * @return the durable colony UUID, or null when this position is not a founded colony
+     */
+    public UUID upsert(RegistryKey<World> dimension, BlockPos position, UUID owner,
+                       Collection<UUID> members, UUID requestedColonyId,
+                       String colonyName, String ownerName, int colonyLevel) {
         if (owner == null) {
             remove(dimension, position);
-            return;
+            return null;
         }
+        String dimensionId = dimension.getValue().toString();
+        String key = recordKey(dimensionId, position.asLong());
+        ClaimRecord previous = claims.get(key);
         List<String> memberIds = members == null ? List.of() : members.stream()
                 .filter(Objects::nonNull)
                 .map(UUID::toString)
                 .distinct()
                 .sorted()
                 .toList();
+
+        UUID resolvedId = requestedColonyId;
+        if (resolvedId == null && previous != null && owner.toString().equals(previous.ownerUuid())) {
+            resolvedId = ColonyIdentityRules.parseUuid(previous.colonyId()).orElse(null);
+        }
+        if (resolvedId == null) {
+            resolvedId = ColonyIdentityRules.stableLegacyId(dimensionId, position.asLong(), owner);
+        }
+
         ClaimRecord replacement = new ClaimRecord(
-                dimension.getValue().toString(), position.asLong(), owner.toString(), memberIds);
-        String key = recordKey(replacement.dimension(), replacement.position());
-        ClaimRecord previous = claims.put(key, replacement);
+                dimensionId, position.asLong(), owner.toString(), memberIds,
+                resolvedId.toString(), colonyName, ownerName, colonyLevel);
         if (!replacement.equals(previous)) {
+            claims.put(key, replacement);
             rebuildIndex();
             markDirty();
         }
+        return resolvedId;
     }
 
     public void remove(RegistryKey<World> dimension, BlockPos position) {
@@ -84,6 +116,24 @@ public final class ColonyClaimState extends PersistentState {
             rebuildIndex();
             markDirty();
         }
+    }
+
+    /** Find a saved colony by its durable identity without loading its Town Hall chunk. */
+    public Optional<ClaimRecord> findColony(UUID colonyId) {
+        if (colonyId == null) return Optional.empty();
+        String id = colonyId.toString();
+        return claims.values().stream()
+                .filter(ClaimRecord::hasIdentity)
+                .filter(claim -> id.equals(claim.colonyId()))
+                .findFirst();
+    }
+
+    /** Snapshot of registered colony records; uninitialized legacy claims are intentionally omitted. */
+    public List<ClaimRecord> colonies() {
+        return claims.values().stream()
+                .filter(ClaimRecord::hasIdentity)
+                .sorted(java.util.Comparator.comparing(ClaimRecord::colonyId))
+                .toList();
     }
 
     public List<ClaimRecord> nearbyClaims(String dimension, BlockPos target) {
@@ -143,12 +193,21 @@ public final class ColonyClaimState extends PersistentState {
         return ((long) x & 0xFFFF_FFFFL) << 32 | ((long) z & 0xFFFF_FFFFL);
     }
 
-    public record ClaimRecord(String dimension, long position, String ownerUuid, List<String> members) {
+    public record ClaimRecord(String dimension, long position, String ownerUuid, List<String> members,
+                              String colonyId, String colonyName, String ownerName, int colonyLevel) {
         public ClaimRecord {
             dimension = dimension == null ? "" : dimension;
             ownerUuid = ownerUuid == null ? "" : ownerUuid;
             members = members == null ? List.of() : members.stream()
                     .filter(Objects::nonNull).distinct().sorted().toList();
+            colonyId = colonyId == null ? "" : colonyId;
+            colonyName = colonyName == null ? "" : colonyName;
+            ownerName = ownerName == null ? "" : ownerName;
+            colonyLevel = Math.max(1, colonyLevel);
+        }
+
+        public boolean hasIdentity() {
+            return ColonyIdentityRules.parseUuid(colonyId).isPresent() && isValid();
         }
 
         public BlockPos center() {
@@ -169,6 +228,7 @@ public final class ColonyClaimState extends PersistentState {
 
         private boolean isValid() {
             return Identifier.tryParse(dimension) != null && parseUuid(ownerUuid) != null
+                    && (colonyId.isBlank() || parseUuid(colonyId) != null)
                     && members.stream().allMatch(member -> parseUuid(member) != null);
         }
 

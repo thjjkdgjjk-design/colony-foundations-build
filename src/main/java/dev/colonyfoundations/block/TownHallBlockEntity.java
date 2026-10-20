@@ -51,6 +51,8 @@ public final class TownHallBlockEntity extends BlockEntity {
     private int siteOffsetZ = -3;
     private final Map<Identifier, Integer> resourceStock = new HashMap<>();
     private UUID ownerUuid;
+    /** Stable colony identity, also indexed in world PersistentState while this chunk is unloaded. */
+    private UUID colonyUuid;
     private String ownerName = "";
     private String colonyName = "";
     private int colonyLevel = 1;
@@ -77,6 +79,7 @@ public final class TownHallBlockEntity extends BlockEntity {
     public void ensureFounded(PlayerEntity player) {
         if (ownerUuid != null) return;
         ownerUuid = player.getUuid();
+        colonyUuid = UUID.randomUUID();
         ownerName = player.getName().getString();
         colonyName = "Колония " + ownerName;
         colonyLevel = 1;
@@ -107,6 +110,17 @@ public final class TownHallBlockEntity extends BlockEntity {
 
     public UUID colonyOwnerUuid() {
         return ownerUuid;
+    }
+
+    public UUID colonyUuid() {
+        return colonyUuid;
+    }
+
+    /** Apply the UUID resolved by the persistent colony directory during legacy migration. */
+    public void setColonyUuid(UUID colonyUuid) {
+        if (java.util.Objects.equals(this.colonyUuid, colonyUuid)) return;
+        this.colonyUuid = colonyUuid;
+        markDirty();
     }
 
     private void syncTerritoryClaim() {
@@ -148,6 +162,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         }
         colonyName = safe;
         markDirty();
+        syncTerritoryClaim();
         return true;
     }
 
@@ -670,6 +685,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putInt("SiteOffsetX", siteOffsetX);
         nbt.putInt("SiteOffsetZ", siteOffsetZ);
         if (ownerUuid != null) nbt.putString("ColonyOwnerUuid", ownerUuid.toString());
+        if (colonyUuid != null) nbt.putString("ColonyUuid", colonyUuid.toString());
         nbt.putString("ColonyOwnerName", ownerName);
         nbt.putString("ColonyName", colonyName);
         nbt.putInt("ColonyLevel", colonyLevel);
@@ -704,6 +720,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         }
         ownerName = nbt.getString("ColonyOwnerName").orElse("");
         colonyName = nbt.getString("ColonyName").orElse("");
+        String colonyIdRaw = nbt.getString("ColonyUuid").orElse("");
+        colonyUuid = ColonyIdentityRules.parseUuid(colonyIdRaw).orElse(null);
         colonyLevel = Math.max(1, nbt.getInt("ColonyLevel").orElse(1));
         projectIssue = nbt.getString("ProjectIssue").orElse("");
         String builderRaw = nbt.getString("AssignedBuilderUuid").orElse("");

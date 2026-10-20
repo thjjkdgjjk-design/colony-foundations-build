@@ -28,10 +28,10 @@ The audited source baseline is primarily MineColonies/Structurize for Minecraft 
 
 | ID | Feature group to port | Official source | Current state | Dependencies | Completion criteria |
 |---|---|---|---|---|---|
-| CORE-01 | Founding, colony identity, owner, name, level, lifecycle | Official source and wiki above | Partial: Town Hall persists owner/name/level; no complete colony lifecycle | Persistent colony model, Town Hall, permissions, migration | Stable colony ID; found/delete/reactivate; migration and save/reload tests |
+| CORE-01 | Founding, colony identity, owner, name, level, lifecycle | Official source and wiki above | Partial: Town Hall persists owner/name/level; a durable UUID and summary metadata now live in world PersistentState; full lifecycle is absent | Persistent colony model, Town Hall, permissions, migration | Stable identity across chunk unload/reload; found/delete/reactivate; migration and save/reload tests |
 | CORE-02 | Membership, invitations, revocation, access roles | Official wiki; exact semantics to verify | Partial: member UUIDs persist and owner-only /colony invite and /colony revoke commands now exist; not build- or gameplay-verified | CORE-01, networking/commands, claims | Owner-only changes, unauthorized rejection, offline/rejoin persistence and abuse tests |
 | CORE-03 | Claims, boundaries, overlap, build/interaction protection | Official wiki; exact upstream settings to verify | Partial: fixed initial radius, persistent claim index and server hooks | CORE-01, PersistentState, server events | Break/place/use tests, overlapping claims, dimensions, unload/reload and removal |
-| CORE-04 | Player-to-colony mapping, deletion, migration and corruption recovery | MineColonies source | Missing/partial: claims persist globally; identity mainly resides in Town Hall block entity | CORE-01, CORE-03 | Identity independent of block entity; safe recovery from duplicate/corrupt records |
+| CORE-04 | Player-to-colony mapping, deletion, migration and corruption recovery | MineColonies source | Partial: persistent claim records now include colony UUID/name/owner display name/level/members and can be queried by UUID without loading the Town Hall; old records lazily gain deterministic IDs on re-registration | CORE-01, CORE-03 | Save/reload and legacy migration tests; identity conflict/corruption policy; lifecycle deletion and owner-to-colony indexes |
 | CIT-01 | Citizen entity, names, skills, traits, age/family, needs, happiness, disease, education | Official wiki/source; enumerate exact fields from pinned version | Missing: vanilla villagers are used for basic worker behavior | Colony model, custom entity/data, AI, UI, persistence | Each upstream field has behavior, sync, save/load and gameplay tests |
 | JOB-01 | Builder, assignment, navigation, staged construction | Official wiki/source | Partial: villager contract and incremental single-project queue | Blueprints, materials, navigation, claims, orders | Full build/upgrade/repair flow; material correctness; pause/resume and recovery |
 | JOB-02 | Farmer, fields, crop cycles, seeds and fertilizer | Official wiki/source | Partial: server worker loop for supported crops, including melon/pumpkin stem handling | Assignment, field, inventory, requests | Crop-by-crop parity matrix; full inventory/path/chunk reload tests |
@@ -63,7 +63,7 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 
 1. Verify courier-reassignment CI and review it before any merge.
 2. Finish usable colony membership/permission workflows and persistence/security tests.
-3. Establish stable colony identity and migration independent of Town Hall chunk loading.
+3. Extend the new persistent colony directory with migration/identity conflict tests, lifecycle handling, and reverse player-to-colony indexes.
 4. Complete the blueprint format manifest and a rights-cleared content pipeline.
 5. Build a data-driven block/item/recipe registry and connect hut levels to actual work orders.
 6. Port required dependency APIs in dependency order.
@@ -74,6 +74,8 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 ## Verification log — 2026-10-21
 
 - GitHub heads at initial audit: main = 6aa8ae92a2ce4f6badfa446621911a7b6ed46b80; feature branch has since advanced with the parity register and owner-management command commits.
-- Main Actions run #39503346438 succeeded for that exact main HEAD. The queried Actions endpoint returned no run for the feature commit, so feature CI is unconfirmed.
+- Main Actions run #39503346438 succeeded for main HEAD 6aa8ae92a2ce4f6badfa446621911a7b6ed46b80.
+- Feature Actions run #39508341303 succeeded for exact feature HEAD baa1eb4243cc065c034214bb21f97362f4a3a444: JDK 22 setup, main mod build/tests, schematics add-on build, distributable preparation and artifact upload all completed. This verifies that commit only; it does not verify the next change below.
 - Code inventory confirms claim state/protection, Town Hall ownership/membership, blueprint catalog/queue, farmer logic, request state and a separate schematic add-on. This is not an in-game test.
-- On 2026-10-21, an experimental owner command workflow was added: /colony info, /colony rename, /colony invite, /colony revoke. The workflow file was changed to include feat/** on push, but GitHub Actions did not report a run for the feature branch; the workflow is still only configured on main in the default-branch context, so this change is not verified by CI yet. Local git clone/build was unavailable because the execution environment could not resolve github.com. No client launch, dedicated-server launch, multiplayer scenario or actual gameplay test was executed in this audit.
+- The owner command workflow includes /colony info, /colony rename, /colony invite and /colony revoke. Local git clone/build remains unavailable in this environment because it cannot resolve github.com. No Minecraft client launch, dedicated-server launch, multiplayer scenario or actual gameplay test has been executed in this audit.
+- New implementation in the next commit: durable colony UUID plus name/owner display name/level/member metadata in the existing world-persistent claim directory; UUID lookup works from persistent records without resolving a Town Hall block entity. Legacy records without identity receive a deterministic dimension/position/owner UUID when they are next registered. New behavior is **Implemented**, not yet **Verified**, until the following commit's CI and tests complete.
