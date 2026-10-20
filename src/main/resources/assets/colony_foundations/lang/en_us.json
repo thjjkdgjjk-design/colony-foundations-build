@@ -1,4 +1,5 @@
 {
   "block.colony_foundations.town_hall": "Town Hall",
-  "item.colony_foundations.builder_contract": "Builder Contract"
+  "item.colony_foundations.builder_contract": "Builder Contract",
+  "item.colony_foundations.worker_contract": "Worker Contract"
 }
