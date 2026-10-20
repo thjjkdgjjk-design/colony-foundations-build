@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -102,3 +103,19 @@ jobs:
             Both include 20 citizen-house schematics from ldtteam/minecolonies-schematics (GPL-3.0-only), pinned at ae86ba500d3172220669657e0102861fa8b7f3be.
             Colony Schematics places block states only; block entities, inventories, entities and full Structurize behavior are not implemented. The full MineColonies profession/economy systems are not included.
           files: build/release/*.jar
+
+      - name: Report build result to the build-trigger issue
+        if: ${{ always() && github.event_name == 'issues' && startsWith(github.event.issue.title, '[build]') }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const outcome = '${{ job.status }}';
+            const body = outcome === 'success'
+              ? '✅ CI build succeeded. Both distributable JARs should be attached to this run release: Colony Foundations and the separate Colony Schematics add-on. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.'
+              : '❌ CI build failed. Inspect this workflow run for the compile or packaging error: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
