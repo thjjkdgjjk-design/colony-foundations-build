@@ -82,3 +82,10 @@ CI compilation proves source compatibility with the compile environment only; it
 - Fixed Town Hall status formatting so the server sends actual line breaks instead of the literal characters \\ and `n`; this lets the existing client status renderer split the text correctly.
 - Fixed the pause/resume guard so a build stopped by a placement/path issue at progress 0 can be resumed after the player addresses the issue. Previously the UI's pause button rejected that retry as if no project had been selected.
 - Validation target: both Gradle projects compile and the schematic transform unit tests run in CI. Town Hall behavior still needs client/server in-game validation.
+
+
+## Локализация каталога схем — 2026-10-20
+
+- Названия 23 стилей из набора схем, категорий и распространённых типов построек и уровней отображаются по-русски.
+- Добавлены автоматические тесты для пользовательских datapack-схем, альтернативных вариантов и встроенных схем.
+- Проверка шрифтов, переносов и ширины длинных строк в самой игре ещё не проводилась.

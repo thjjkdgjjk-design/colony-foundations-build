@@ -69,7 +69,7 @@ public final class SchematicLoader {
             List<String> requiredMods
     ) {
         public Schematic {
-            name = name == null || name.isBlank() ? "Unnamed schematic" : name;
+            name = name == null || name.isBlank() ? "Безымянный чертёж" : name;
             primaryOffset = primaryOffset == null ? BlockPos.ORIGIN : primaryOffset.toImmutable();
             blocks = List.copyOf(blocks);
             blockEntities = blockEntities.stream().map(entry ->
@@ -121,16 +121,16 @@ public final class SchematicLoader {
     public static List<CatalogEntry> available(ResourceManager manager) {
         Map<String, CatalogEntry> entries = new TreeMap<>();
         String[][] styles = {
-                {"birch", "Birch"},
-                {"darkoak", "Dark Oak"},
-                {"defaultwooden", "Wooden"},
-                {"stone", "Stone"}
+                {"birch", "Берёзовый стиль"},
+                {"darkoak", "Тёмный дуб"},
+                {"defaultwooden", "Деревянный стиль"},
+                {"stone", "Каменный стиль"}
         };
         for (String[] style : styles) {
             for (int tier = 1; tier <= 5; tier++) {
                 Identifier id = Identifier.of(ColonySchematics.MOD_ID,
                         "minecolonies/" + style[0] + "/buildings/citizen/citizen" + tier);
-                entries.put(id.toString(), new CatalogEntry(id, style[1] + " — Citizen House " + tier));
+                entries.put(id.toString(), new CatalogEntry(id, style[1] + " — Дом жителя, уровень " + tier));
             }
         }
 
@@ -321,23 +321,133 @@ public final class SchematicLoader {
         return value.isPresent() ? state.with(property, (Comparable) value.get()) : state;
     }
 
-    private static String displayName(Identifier id) {
+    static String displayName(Identifier id) {
         String path = id.getPath();
         if (path.startsWith("blueprints/")) path = path.substring("blueprints/".length());
         String[] pieces = path.split("/");
-        String style = pieces.length > 1 ? pieces[1] : "MineColonies";
-        style = switch (style.toLowerCase(java.util.Locale.ROOT)) {
+        int styleIndex = pieces.length > 1 && pieces[0].equals("minecolonies") ? 1 : 0;
+        String styleId = pieces[styleIndex].toLowerCase(java.util.Locale.ROOT);
+        String style = switch (styleId) {
+            case "acacia" -> "Акация";
+            case "ancientathens" -> "Древние Афины";
             case "birch", "medievalbirch" -> "Берёзовый стиль";
-            case "darkoak", "medievaldarkoak" -> "Стиль тёмного дуба";
-            case "defaultwooden", "medievaloak", "wooden" -> "Деревянный стиль";
-            case "stone", "medievalstone" -> "Каменный стиль";
+            case "caledonia" -> "Каледония";
+            case "cavern" -> "Подземный мир";
+            case "colonial" -> "Колониальный стиль";
+            case "darkoak", "medievaldarkoak" -> "Тёмный дуб";
+            case "fortress" -> "Крепость";
+            case "incan" -> "Инкский стиль";
             case "jungle" -> "Стиль джунглей";
-            case "spruce" -> "Еловый стиль";
-            default -> style.replace('_', ' ');
+            case "lostcity" -> "Затерянный город";
+            case "medievaloak", "defaultwooden", "wooden" -> "Деревянный стиль";
+            case "medievalspruce", "spruce" -> "Еловый стиль";
+            case "nordic" -> "Скандинавский стиль";
+            case "original", "minecolonies" -> "Оригинальный стиль";
+            case "pagoda" -> "Пагода";
+            case "sandstone" -> "Песчаниковый стиль";
+            case "shire" -> "Шир";
+            case "spacewars" -> "Космические войны";
+            case "stone", "medievalstone" -> "Каменный стиль";
+            case "truedwarven" -> "Гномий стиль";
+            case "warped" -> "Искажённый стиль";
+            default -> "Стиль «" + styleId.replace("_", " ") + "»";
         };
-        String file = pieces[pieces.length - 1].replaceAll("\\.(blueprint|nbt)$", "");
-        String title = file.replaceAll("([a-z])([0-9])", "$1 $2")
-                .replace('_', ' ').replace('-', ' ');
-        return style + " — " + title;
+
+        int categoryIndex = styleIndex + 1;
+        String categoryId = categoryIndex < pieces.length - 1
+                ? pieces[categoryIndex].toLowerCase(java.util.Locale.ROOT) : "";
+        String category = switch (categoryId) {
+            case "agriculture" -> "Сельское хозяйство";
+            case "craftsmanship" -> "Ремесло";
+            case "decorations" -> "Декорации";
+            case "education" -> "Образование";
+            case "fundamentals" -> "Основные постройки";
+            case "infrastructure" -> "Инфраструктура";
+            case "military" -> "Военные постройки";
+            case "mystic" -> "Мистика";
+            case "walls" -> "Стены и ограждения";
+            case "buildings" -> "Постройки";
+            case "roads" -> "Дороги";
+            case "supplycamps" -> "Стартовые лагеря";
+            case "supplyships" -> "Стартовые корабли";
+            case "" -> "Чертежи";
+            default -> "Раздел «" + categoryId.replace("_", " ") + "»";
+        };
+
+        String file = pieces[pieces.length - 1];
+        if (file.endsWith(".blueprint")) file = file.substring(0, file.length() - ".blueprint".length());
+        if (file.endsWith(".nbt")) file = file.substring(0, file.length() - ".nbt".length());
+        return style + " — " + category + " — " + localizeBlueprintName(file);
+    }
+
+    private static String localizeBlueprintName(String rawName) {
+        String compact = rawName.toLowerCase(java.util.Locale.ROOT).replace("_", "").replace("-", "");
+        boolean alternative = compact.startsWith("alt") && compact.length() > 3;
+        if (alternative) compact = compact.substring(3);
+
+        int tier = 0;
+        if (compact.length() > 1) {
+            char last = compact.charAt(compact.length() - 1);
+            String candidate = compact.substring(0, compact.length() - 1);
+            if (last >= '1' && last <= '5' && !buildingName(candidate).isEmpty()) {
+                compact = candidate;
+                tier = last - '0';
+            }
+        }
+
+        String translated = buildingName(compact);
+        if (!translated.isEmpty()) {
+            return (alternative ? "Альтернативный вариант: " : "")
+                    + translated + (tier == 0 ? "" : ", уровень " + tier);
+        }
+        String readable = rawName.replace("_", " ").replace("-", " ");
+        return alternative ? "Альтернативный вариант: " + readable : "Чертёж «" + readable + "»";
+    }
+
+    private static String buildingName(String stem) {
+        return switch (stem) {
+            case "alchemist" -> "Хижина алхимика";
+            case "alchemisttower" -> "Башня алхимика";
+            case "apiary", "beekeeper" -> "Пасека";
+            case "archery" -> "Лучная мастерская";
+            case "baker" -> "Хижина пекаря";
+            case "bakery" -> "Пекарня";
+            case "barracks" -> "Казармы";
+            case "barrackstower" -> "Башня казарм";
+            case "barrackstowerleft" -> "Левая башня казарм";
+            case "barrackstowerright" -> "Правая башня казарм";
+            case "barrackstowerlower" -> "Нижняя башня казарм";
+            case "barrackstowerupper" -> "Верхняя башня казарм";
+            case "blacksmith" -> "Кузница";
+            case "builder" -> "Хижина строителя";
+            case "chickenherder" -> "Птичник";
+            case "citizen" -> "Дом жителя";
+            case "combatacademy" -> "Боевая академия";
+            case "cook" -> "Хижина повара";
+            case "cowboy" -> "Коровник";
+            case "deliveryman" -> "Хижина курьера";
+            case "farmer" -> "Ферма";
+            case "fisherman" -> "Рыбацкая хижина";
+            case "guardtower" -> "Сторожевая башня";
+            case "hospital" -> "Больница";
+            case "house" -> "Дом";
+            case "library" -> "Библиотека";
+            case "lumberjack" -> "Хижина лесоруба";
+            case "miner" -> "Шахта";
+            case "mysticalsite" -> "Мистическое место";
+            case "plantation" -> "Плантация";
+            case "quarry" -> "Карьер";
+            case "residence" -> "Жилой дом";
+            case "restaurant" -> "Ресторан";
+            case "sawmill" -> "Лесопилка";
+            case "school" -> "Школа";
+            case "stable" -> "Конюшня";
+            case "swineherder" -> "Свинарник";
+            case "tavern" -> "Таверна";
+            case "townhall" -> "Ратуша";
+            case "university" -> "Университет";
+            case "warehouse" -> "Склад";
+            default -> "";
+        };
     }
 }
