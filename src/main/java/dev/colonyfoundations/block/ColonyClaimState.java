@@ -264,6 +264,17 @@ public final class ColonyClaimState extends PersistentState {
                 || existing.sameAssignment(requested);
     }
 
+    /** Remove a released tombstone only after the corresponding entity has reconciled its tags. */
+    public boolean forgetReleasedCitizenAssignment(UUID citizenUuid) {
+        if (citizenUuid == null) return false;
+        String key = citizenUuid.toString();
+        CitizenAssignment existing = citizenAssignments.get(key);
+        if (existing == null || existing.isActive()) return false;
+        citizenAssignments.remove(key);
+        markDirty();
+        return true;
+    }
+
     public List<ClaimRecord> nearbyClaims(String dimension, BlockPos target) {
         Map<Long, List<ClaimRecord>> byChunk = claimsByDimensionChunk.get(dimension);
         if (byChunk == null) return List.of();

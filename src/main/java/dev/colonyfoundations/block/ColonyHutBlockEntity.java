@@ -462,6 +462,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
                 oldVillager.removeCommandTag(ownAssignmentTag);
                 oldVillager.removeCommandTag(HUT_WORKER_TAG);
                 removeJobTags(oldVillager);
+                directory.forgetReleasedCitizenAssignment(assignedCitizen);
             }
         }
 

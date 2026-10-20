@@ -8,6 +8,7 @@ import dev.colonyfoundations.block.ModHuts;
 import dev.colonyfoundations.block.ModField;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.item.BuilderRecruitment;
+import dev.colonyfoundations.worker.CitizenAssignmentLifecycle;
 import dev.colonyfoundations.network.ProjectNetworking;
 import dev.colonyfoundations.item.ModItems;
 import net.fabricmc.api.ModInitializer;
@@ -34,6 +35,7 @@ public final class ColonyFoundations implements ModInitializer {
         ModItems.initialize();
         BuilderRecruitment.initialize();
         ColonyProtection.initialize();
+        CitizenAssignmentLifecycle.initialize();
         BlueprintRegistry.register();
         ProjectNetworking.registerServer();
         ColonyManagementCommands.register();

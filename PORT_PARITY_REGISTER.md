@@ -92,3 +92,5 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 - CI run #39509085912 for 513b60467851f43e0f246a2a9b445bab5d91288b failed at `:compileTestJava`: six existing `ColonyTerritoryRulesTest` cases still construct `ClaimRecord` with its original four-argument signature. Main sources compiled; tests were not executed. The follow-up commit restores that constructor as a compatibility overload; this fix remains **Implemented**, pending CI.
 
 - New code stage: persisted `CitizenAssignment` records now share the Overworld `PersistentState` file with claims, preserving old saves via an optional `citizens` field. Assigning a worker requires a unique colony claim, a valid UUID/role/job and no other active assignment. This code is **Implemented** and awaiting its own CI run; no in-game testing has been performed.
+
+- Lifecycle follow-up: on villager entity load, an active durable assignment reconstructs its role/building/job tags; a released assignment clears stale assignment tags and retires the tombstone. This follow-up is **Implemented**, pending its own CI run and gameplay test.

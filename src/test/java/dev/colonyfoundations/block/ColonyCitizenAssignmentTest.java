@@ -56,6 +56,22 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void releasedAssignmentTombstonesCanBeConsumedButActiveAssignmentsCannot() {
+        UUID citizenId = UUID.randomUUID();
+        UUID colonyId = UUID.randomUUID();
+        ColonyClaimState.CitizenAssignment released = new ColonyClaimState.CitizenAssignment(
+                citizenId.toString(), colonyId.toString(), "minecraft:overworld", 0,
+                "colony_foundations:worker", "colony_foundations:hut_farmer", 0, "released");
+        ColonyClaimState.CitizenAssignment active = released.withStatus("active");
+        ColonyClaimState state = new ColonyClaimState(Map.of(), Map.of(citizenId.toString(), active));
+
+        assertFalse(state.forgetReleasedCitizenAssignment(citizenId));
+        state = new ColonyClaimState(Map.of(), Map.of(citizenId.toString(), released));
+        assertTrue(state.forgetReleasedCitizenAssignment(citizenId));
+        assertTrue(state.citizenAssignment(citizenId).isEmpty());
+    }
+
+    @Test
     void staleOrInvalidRecordsDoNotBlockRecovery() {
         UUID citizenId = UUID.randomUUID();
         UUID colonyId = UUID.randomUUID();
