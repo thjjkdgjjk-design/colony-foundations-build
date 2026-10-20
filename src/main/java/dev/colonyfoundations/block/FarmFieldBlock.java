@@ -47,10 +47,12 @@ public final class FarmFieldBlock extends BlockWithEntity {
         var crop = FarmerJobRules.cropForItemId(itemId);
         if (crop.isPresent()) {
             field.configureCropFromItem(itemId);
-            Identifier cropId = Identifier.tryParse(crop.get().blockId());
+            String displayBlockId = FarmerJobRules.fruitBlockIdForStem(crop.get().blockId())
+                    .orElse(crop.get().blockId());
+            Identifier cropId = Identifier.tryParse(displayBlockId);
             String cropName = cropId != null && Registries.BLOCK.containsId(cropId)
                     ? Text.translatable(Registries.BLOCK.get(cropId).getTranslationKey()).getString()
-                    : crop.get().blockId();
+                    : displayBlockId;
             serverPlayer.sendMessage(Text.translatable(
                     "message.colony_foundations.field_crop_set", cropName), true);
             return ActionResult.SUCCESS;
@@ -64,7 +66,9 @@ public final class FarmFieldBlock extends BlockWithEntity {
         }
 
         String cropName = "не выбрана";
-        Identifier cropId = Identifier.tryParse(field.cropBlockId());
+        String displayBlockId = FarmerJobRules.fruitBlockIdForStem(field.cropBlockId())
+                .orElse(field.cropBlockId());
+        Identifier cropId = Identifier.tryParse(displayBlockId);
         if (field.configured() && cropId != null && Registries.BLOCK.containsId(cropId)) {
             cropName = Text.translatable(Registries.BLOCK.get(cropId).getTranslationKey()).getString();
         }

@@ -46,7 +46,7 @@ public final class CitizenJobController {
         }
     }
 
-    private enum FieldActionType { TILL, PLANT, HARVEST, FERTILIZE }
+    private enum FieldActionType { TILL, PLANT, HARVEST, HARVEST_FRUIT, FERTILIZE }
 
     private record FieldAction(FieldActionType type, BlockPos target, List<ItemStack> drops) { }
 
@@ -112,26 +112,54 @@ public final class CitizenJobController {
         BlockPos fieldPos = field.getPos();
         int radius = field.fieldRadius();
 
-        // The field block sits at crop height above its central farmland cell.
-        // Mature harvest is its own daily action; it does not also replant.
+        // Melon/pumpkin seeds grow a stem. A mature stem creates a separate adjacent fruit block;
+        // harvesting the stem itself would destroy the crop without yielding the fruit.
         if (hut.hasItemPathSuffix("_axe")) {
-            for (int x = -radius; x <= radius; x++) {
-                for (int z = -radius; z <= radius; z++) {
-                    BlockPos cropPos = fieldPos.add(x, 0, z);
-                    if (cropPos.equals(fieldPos) || !world.isChunkLoaded(cropPos)) continue;
-                    BlockState cropState = world.getBlockState(cropPos);
-                    if (cropState.getBlock() != cropBlock
-                            || !(cropState.getBlock() instanceof CropBlock crop)
-                            || !crop.isMature(cropState)) continue;
-                    List<ItemStack> drops = resolveDrops(Registries.BLOCK.getId(cropBlock).getPath());
-                    if (!drops.isEmpty() && hut.canStoreItems(drops)) {
-                        return new FieldAction(FieldActionType.HARVEST, cropPos.toImmutable(), drops);
+            var fruitId = FarmerJobRules.fruitBlockIdForStem(field.cropBlockId());
+            if (fruitId.isPresent()) {
+                Block fruitBlock = blockForId(fruitId.get());
+                for (int x = -radius; x <= radius; x++) {
+                    for (int z = -radius; z <= radius; z++) {
+                        BlockPos stemPos = fieldPos.add(x, 0, z);
+                        if (stemPos.equals(fieldPos) || !world.isChunkLoaded(stemPos)) continue;
+                        BlockState stemState = world.getBlockState(stemPos);
+                        if (stemState.getBlock() != cropBlock
+                                || !(stemState.getBlock() instanceof CropBlock stem)
+                                || !stem.isMature(stemState)) continue;
+                        for (int dx = -1; dx <= 1; dx++) {
+                            for (int dz = -1; dz <= 1; dz++) {
+                                if (Math.abs(dx) + Math.abs(dz) != 1) continue;
+                                BlockPos fruitPos = stemPos.add(dx, 0, dz);
+                                if (!world.isChunkLoaded(fruitPos)
+                                        || !world.getBlockState(fruitPos).isOf(fruitBlock)) continue;
+                                List<ItemStack> drops = resolveDrops(Registries.BLOCK.getId(fruitBlock).getPath());
+                                if (!drops.isEmpty() && hut.canStoreItems(drops)) {
+                                    return new FieldAction(FieldActionType.HARVEST_FRUIT, fruitPos.toImmutable(), drops);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Normal Crops use the crop block itself as the harvest target.
+                for (int x = -radius; x <= radius; x++) {
+                    for (int z = -radius; z <= radius; z++) {
+                        BlockPos cropPos = fieldPos.add(x, 0, z);
+                        if (cropPos.equals(fieldPos) || !world.isChunkLoaded(cropPos)) continue;
+                        BlockState cropState = world.getBlockState(cropPos);
+                        if (cropState.getBlock() != cropBlock
+                                || !(cropState.getBlock() instanceof CropBlock crop)
+                                || !crop.isMature(cropState)) continue;
+                        List<ItemStack> drops = resolveDrops(Registries.BLOCK.getId(cropBlock).getPath());
+                        if (!drops.isEmpty() && hut.canStoreItems(drops)) {
+                            return new FieldAction(FieldActionType.HARVEST, cropPos.toImmutable(), drops);
+                        }
                     }
                 }
             }
         }
 
-        // Fertilizer runs as a distinct field action and consumes one bone meal per growth step.
+        // Fertilizer acts on the configured crop/stem and remains a separate daily action.
         if (hut.requestFertilizer() && hut.hasItem("minecraft:bone_meal")) {
             for (int x = -radius; x <= radius; x++) {
                 for (int z = -radius; z <= radius; z++) {
@@ -205,6 +233,17 @@ public final class CitizenJobController {
                 BlockState oldState = world.getBlockState(target);
                 if (!(oldState.getBlock() instanceof CropBlock crop) || !crop.isMature(oldState)
                         || !oldState.getBlock().equals(blockForId(field.cropBlockId()))) return false;
+                if (!hut.canStoreItems(action.drops())) return false;
+                if (!world.setBlockState(target, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL)) return false;
+                if (!hut.storeItems(action.drops())) {
+                    world.setBlockState(target, oldState, Block.NOTIFY_ALL);
+                    return false;
+                }
+            }
+            case HARVEST_FRUIT -> {
+                String fruitId = FarmerJobRules.fruitBlockIdForStem(field.cropBlockId()).orElse(null);
+                if (fruitId == null || !world.getBlockState(target).isOf(blockForId(fruitId))) return false;
+                BlockState oldState = world.getBlockState(target);
                 if (!hut.canStoreItems(action.drops())) return false;
                 if (!world.setBlockState(target, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL)) return false;
                 if (!hut.storeItems(action.drops())) {

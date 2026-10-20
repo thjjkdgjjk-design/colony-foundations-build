@@ -11,6 +11,8 @@ class FarmerFieldRulesTest {
         assertEquals("minecraft:carrots", FarmerJobRules.cropForItemId("minecraft:carrot").orElseThrow().blockId());
         assertEquals("minecraft:potatoes", FarmerJobRules.cropForItemId("minecraft:potato").orElseThrow().blockId());
         assertEquals("minecraft:beetroots", FarmerJobRules.cropForItemId("minecraft:beetroot_seeds").orElseThrow().blockId());
+        assertEquals("minecraft:melon_stem", FarmerJobRules.cropForItemId("minecraft:melon_seeds").orElseThrow().blockId());
+        assertEquals("minecraft:pumpkin_stem", FarmerJobRules.cropForItemId("minecraft:pumpkin_seeds").orElseThrow().blockId());
         assertTrue(FarmerJobRules.cropForItemId("minecraft:stone").isEmpty());
     }
 
@@ -20,7 +22,23 @@ class FarmerFieldRulesTest {
         assertEquals("minecraft:carrot", FarmerJobRules.cropForBlockId("minecraft:carrots").orElseThrow().plantingItemId());
         assertEquals("minecraft:potato", FarmerJobRules.cropForBlockId("minecraft:potatoes").orElseThrow().plantingItemId());
         assertEquals("minecraft:beetroot_seeds", FarmerJobRules.cropForBlockId("minecraft:beetroots").orElseThrow().plantingItemId());
+        assertEquals("minecraft:melon_seeds", FarmerJobRules.cropForBlockId("minecraft:melon_stem").orElseThrow().plantingItemId());
+        assertEquals("minecraft:pumpkin_seeds", FarmerJobRules.cropForBlockId("minecraft:pumpkin_stem").orElseThrow().plantingItemId());
         assertTrue(FarmerJobRules.cropForBlockId("minecraft:oak_log").isEmpty());
+    }
+
+    @Test
+    void melonAndPumpkinStemsMapToSeparateFruitHarvestTargets() {
+        assertEquals("minecraft:melon",
+                FarmerJobRules.fruitBlockIdForStem("minecraft:melon_stem").orElseThrow());
+        assertEquals("minecraft:pumpkin",
+                FarmerJobRules.fruitBlockIdForStem("minecraft:pumpkin_stem").orElseThrow());
+        assertTrue(FarmerJobRules.fruitBlockIdForStem("minecraft:wheat").isEmpty());
+        assertEquals("minecraft:melon_slice",
+                FarmerJobRules.harvestItemsFor("melon").get(0).itemId());
+        assertEquals(4, FarmerJobRules.harvestItemsFor("melon").get(0).count());
+        assertEquals("minecraft:pumpkin",
+                FarmerJobRules.harvestItemsFor("pumpkin").get(0).itemId());
     }
 
     @Test

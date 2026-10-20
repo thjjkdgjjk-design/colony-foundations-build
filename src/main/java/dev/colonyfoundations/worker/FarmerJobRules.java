@@ -34,6 +34,8 @@ public final class FarmerJobRules {
             case "minecraft:carrot" -> Optional.of(new CropSpec("minecraft:carrots", itemId));
             case "minecraft:potato" -> Optional.of(new CropSpec("minecraft:potatoes", itemId));
             case "minecraft:beetroot_seeds" -> Optional.of(new CropSpec("minecraft:beetroots", itemId));
+            case "minecraft:melon_seeds" -> Optional.of(new CropSpec("minecraft:melon_stem", itemId));
+            case "minecraft:pumpkin_seeds" -> Optional.of(new CropSpec("minecraft:pumpkin_stem", itemId));
             default -> Optional.empty();
         };
     }
@@ -45,6 +47,17 @@ public final class FarmerJobRules {
             case "minecraft:carrots" -> Optional.of(new CropSpec(blockId, "minecraft:carrot"));
             case "minecraft:potatoes" -> Optional.of(new CropSpec(blockId, "minecraft:potato"));
             case "minecraft:beetroots" -> Optional.of(new CropSpec(blockId, "minecraft:beetroot_seeds"));
+            case "minecraft:melon_stem" -> Optional.of(new CropSpec(blockId, "minecraft:melon_seeds"));
+            case "minecraft:pumpkin_stem" -> Optional.of(new CropSpec(blockId, "minecraft:pumpkin_seeds"));
+            default -> Optional.empty();
+        };
+    }
+
+    public static Optional<String> fruitBlockIdForStem(String stemBlockId) {
+        if (stemBlockId == null) return Optional.empty();
+        return switch (stemBlockId) {
+            case "minecraft:melon_stem" -> Optional.of("minecraft:melon");
+            case "minecraft:pumpkin_stem" -> Optional.of("minecraft:pumpkin");
             default -> Optional.empty();
         };
     }
@@ -75,6 +88,8 @@ public final class FarmerJobRules {
             case "potatoes" -> List.of(new Drop("minecraft:potato", 3));
             case "beetroots" -> List.of(new Drop("minecraft:beetroot", 1),
                     new Drop("minecraft:beetroot_seeds", 2));
+            case "melon" -> List.of(new Drop("minecraft:melon_slice", 4));
+            case "pumpkin" -> List.of(new Drop("minecraft:pumpkin", 1));
             default -> List.of();
         };
     }
