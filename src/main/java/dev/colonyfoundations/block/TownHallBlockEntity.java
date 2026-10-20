@@ -66,7 +66,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     private int noProgressPathChecks;
     private int navigationFailures;
     private final Set<UUID> colonyMembers = new HashSet<>();
-    private final Map<UUID, Set<ColonyPermission>> colonyMemberPermissions = new HashMap<>();
+    private final Map<UUID, ColonyRank> colonyMemberRanks = new HashMap<>();
+    private final Map<ColonyRank, Set<ColonyPermission>> colonyRankPermissions = new java.util.EnumMap<>(ColonyRank.class);
+    /** Reads the briefly-used per-member permission format so existing worlds retain explicit grants. */
+    private final Map<UUID, Set<ColonyPermission>> legacyMemberPermissionOverrides = new HashMap<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TOWN_HALL, pos, state);
@@ -151,33 +154,72 @@ public final class TownHallBlockEntity extends BlockEntity {
         return Set.copyOf(colonyMembers);
     }
 
+    /** Snapshot of effective rank grants, mirrored into world PersistentState for unloaded claims. */
     public Map<String, List<String>> colonyMemberPermissions() {
         Map<String, List<String>> snapshot = new HashMap<>();
-        colonyMemberPermissions.forEach((member, permissions) -> snapshot.put(member.toString(),
-                permissions.stream().map(ColonyPermission::id).sorted().toList()));
+        for (UUID member : colonyMembers) {
+            Set<ColonyPermission> actions;
+            if (legacyMemberPermissionOverrides.containsKey(member)) {
+                actions = legacyMemberPermissionOverrides.get(member);
+            } else {
+                actions = colonyRankPermissions.getOrDefault(colonyRank(member), Set.of());
+            }
+            List<String> ids = actions.stream().map(ColonyPermission::id).sorted().toList();
+            if (!ids.isEmpty()) snapshot.put(member.toString(), ids);
+        }
         return Map.copyOf(snapshot);
+    }
+
+    public ColonyRank colonyRank(UUID memberUuid) {
+        if (memberUuid != null && memberUuid.equals(ownerUuid)) return ColonyRank.OWNER;
+        return colonyMemberRanks.getOrDefault(memberUuid, ColonyRank.NEUTRAL);
     }
 
     public boolean hasPermission(UUID playerUuid, ColonyPermission permission) {
         if (playerUuid == null || permission == null) return false;
         if (playerUuid.equals(ownerUuid)) return true;
-        return colonyMembers.contains(playerUuid)
-                && colonyMemberPermissions.getOrDefault(playerUuid, Set.of()).contains(permission);
+        if (!colonyMembers.contains(playerUuid)) return false;
+        if (legacyMemberPermissionOverrides.containsKey(playerUuid)) {
+            return legacyMemberPermissionOverrides.get(playerUuid).contains(permission);
+        }
+        return colonyRankPermissions.getOrDefault(colonyRank(playerUuid), Set.of()).contains(permission);
     }
 
-    public boolean setMemberPermission(ServerPlayerEntity owner, UUID memberUuid,
-                                       ColonyPermission permission, boolean enabled) {
-        if (!isOwner(owner) || memberUuid == null || permission == null
-                || !colonyMembers.contains(memberUuid)) return false;
-        Set<ColonyPermission> permissions = colonyMemberPermissions.computeIfAbsent(
-                memberUuid, ignored -> new HashSet<>());
-        boolean changed = enabled ? permissions.add(permission) : permissions.remove(permission);
-        if (permissions.isEmpty()) colonyMemberPermissions.remove(memberUuid);
-        if (changed) {
+    public boolean setMemberRank(ServerPlayerEntity actor, UUID memberUuid, ColonyRank rank) {
+        if (!hasPermission(actor == null ? null : actor.getUuid(), ColonyPermission.MANAGE_MEMBERS)
+                || memberUuid == null || memberUuid.equals(ownerUuid) || rank == null
+                || rank == ColonyRank.OWNER || !colonyMembers.contains(memberUuid)) return false;
+        ColonyRank previous = colonyRank(memberUuid);
+        if (previous == rank && !legacyMemberPermissionOverrides.containsKey(memberUuid)) return false;
+        legacyMemberPermissionOverrides.remove(memberUuid);
+        colonyMemberRanks.put(memberUuid, rank);
+        markDirty();
+        syncTerritoryClaim();
+        return true;
+    }
+
+    /** Edit a rank-wide permission profile; all members of that rank are affected. */
+    public boolean setRankPermission(ServerPlayerEntity actor, ColonyRank rank,
+                                     ColonyPermission permission, boolean enabled) {
+        if (!hasPermission(actor == null ? null : actor.getUuid(), ColonyPermission.MANAGE_MEMBERS)
+                || rank == null || rank == ColonyRank.OWNER || permission == null) return false;
+        Set<ColonyPermission> actions = colonyRankPermissions.computeIfAbsent(
+                rank, ignored -> java.util.EnumSet.noneOf(ColonyPermission.class));
+        boolean changed = enabled ? actions.add(permission) : actions.remove(permission);
+        boolean overridesChanged = legacyMemberPermissionOverrides.keySet()
+                .removeIf(member -> colonyRank(member) == rank);
+        if (changed || overridesChanged) {
             markDirty();
             syncTerritoryClaim();
         }
-        return changed;
+        return changed || overridesChanged;
+    }
+
+    /** Compatibility endpoint: changes the target member's rank profile, not a private grant. */
+    public boolean setMemberPermission(ServerPlayerEntity actor, UUID memberUuid,
+                                       ColonyPermission permission, boolean enabled) {
+        if (memberUuid == null || !colonyMembers.contains(memberUuid)) return false;
+        return setRankPermission(actor, colonyRank(memberUuid), permission, enabled);
     }
 
     public boolean renameColony(ServerPlayerEntity owner, String requestedName) {
@@ -201,7 +243,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (target.getUuid().equals(ownerUuid)) return true;
         boolean added = colonyMembers.add(target.getUuid());
         if (added) {
-            colonyMemberPermissions.remove(target.getUuid());
+            legacyMemberPermissionOverrides.remove(target.getUuid());
+            colonyMemberRanks.put(target.getUuid(), ColonyRank.NEUTRAL);
             markDirty();
             syncTerritoryClaim();
             target.sendMessage(Text.literal("[Колония] Вас добавили в колонию «" + colonyName() + "»."), false);
@@ -214,7 +257,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (!hasPermission(owner.getUuid(), ColonyPermission.MANAGE_MEMBERS)) return false;
         boolean removed = colonyMembers.remove(memberUuid);
         if (removed) {
-            colonyMemberPermissions.remove(memberUuid);
+            colonyMemberRanks.remove(memberUuid);
+            legacyMemberPermissionOverrides.remove(memberUuid);
             markDirty();
             syncTerritoryClaim();
         }
@@ -767,13 +811,37 @@ public final class TownHallBlockEntity extends BlockEntity {
         NbtList membersTag = new NbtList();
         colonyMembers.stream().map(UUID::toString).sorted().forEach(member -> membersTag.add(NbtString.of(member)));
         nbt.put("ColonyMembers", membersTag);
+        nbt.putInt("ColonyPermissionVersion", 2);
+        NbtList memberRankEntries = new NbtList();
+        colonyMembers.stream().sorted().forEach(member -> {
+            NbtCompound entry = new NbtCompound();
+            entry.putString("PlayerUuid", member.toString());
+            entry.putString("RankId", colonyRank(member).id());
+            memberRankEntries.add(entry);
+        });
+        nbt.put("ColonyMemberRanks", memberRankEntries);
+
+        NbtList rankProfileEntries = new NbtList();
+        colonyRankPermissions.entrySet().stream()
+                .filter(entry -> entry.getKey() != ColonyRank.OWNER)
+                .sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                    NbtCompound profile = new NbtCompound();
+                    profile.putString("RankId", entry.getKey().id());
+                    NbtList actions = new NbtList();
+                    entry.getValue().stream().map(ColonyPermission::id).sorted()
+                            .forEach(action -> actions.add(NbtString.of(action)));
+                    profile.put("Actions", actions);
+                    rankProfileEntries.add(profile);
+                });
+        nbt.put("ColonyRankPermissions", rankProfileEntries);
+
+        // Keep effective grants so older builds can still read per-member permissions.
         NbtList memberPermissionEntries = new NbtList();
-        colonyMemberPermissions.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+        colonyMemberPermissions().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             NbtCompound permissionEntry = new NbtCompound();
-            permissionEntry.putString("PlayerUuid", entry.getKey().toString());
+            permissionEntry.putString("PlayerUuid", entry.getKey());
             NbtList actions = new NbtList();
-            entry.getValue().stream().map(ColonyPermission::id).sorted()
-                    .forEach(action -> actions.add(NbtString.of(action)));
+            entry.getValue().forEach(action -> actions.add(NbtString.of(action)));
             permissionEntry.put("Actions", actions);
             memberPermissionEntries.add(permissionEntry);
         });
@@ -824,24 +892,70 @@ public final class TownHallBlockEntity extends BlockEntity {
                 });
             }
         });
-        colonyMemberPermissions.clear();
-        nbt.getList("ColonyMemberPermissions").ifPresent(entries -> {
-            for (int i = 0; i < entries.size(); i++) {
-                entries.getCompound(i).ifPresent(entry -> {
-                    UUID memberUuid = ColonyIdentityRules.parseUuid(
-                            entry.getString("PlayerUuid").orElse("")).orElse(null);
-                    if (memberUuid == null || !colonyMembers.contains(memberUuid)) return;
-                    Set<ColonyPermission> actions = new HashSet<>();
-                    entry.getList("Actions").ifPresent(actionList -> {
-                        for (int j = 0; j < actionList.size(); j++) {
-                            actionList.getString(j).ifPresent(raw ->
-                                    ColonyPermission.parse(raw).ifPresent(actions::add));
+        colonyMemberRanks.clear();
+        legacyMemberPermissionOverrides.clear();
+        colonyRankPermissions.clear();
+        colonyRankPermissions.putAll(ColonyRank.defaultProfiles());
+        boolean hasRankVersion = nbt.contains("ColonyPermissionVersion");
+        boolean hasLegacyPermissionList = nbt.contains("ColonyMemberPermissions");
+
+        if (hasRankVersion) {
+            nbt.getList("ColonyRankPermissions").ifPresent(entries -> {
+                for (int i = 0; i < entries.size(); i++) {
+                    entries.getCompound(i).ifPresent(entry -> {
+                        ColonyRank rank = ColonyRank.parse(entry.getString("RankId").orElse(""))
+                                .orElse(null);
+                        if (rank == null || rank == ColonyRank.OWNER) return;
+                        Set<ColonyPermission> actions = java.util.EnumSet.noneOf(ColonyPermission.class);
+                        entry.getList("Actions").ifPresent(actionList -> {
+                            for (int j = 0; j < actionList.size(); j++) {
+                                actionList.getString(j).ifPresent(raw ->
+                                        ColonyPermission.parse(raw).ifPresent(actions::add));
+                            }
+                        });
+                        colonyRankPermissions.put(rank, actions);
+                    });
+                }
+            });
+            nbt.getList("ColonyMemberRanks").ifPresent(entries -> {
+                for (int i = 0; i < entries.size(); i++) {
+                    entries.getCompound(i).ifPresent(entry -> {
+                        UUID memberUuid = ColonyIdentityRules.parseUuid(
+                                entry.getString("PlayerUuid").orElse("")).orElse(null);
+                        ColonyRank rank = ColonyRank.parse(entry.getString("RankId").orElse(""))
+                                .orElse(null);
+                        if (memberUuid != null && colonyMembers.contains(memberUuid)
+                                && rank != null && rank != ColonyRank.OWNER) {
+                            colonyMemberRanks.put(memberUuid, rank);
                         }
                     });
-                    if (!actions.isEmpty()) colonyMemberPermissions.put(memberUuid, actions);
-                });
-            }
-        });
+                }
+            });
+            colonyMembers.forEach(member -> colonyMemberRanks.putIfAbsent(member, ColonyRank.NEUTRAL));
+        } else if (hasLegacyPermissionList) {
+            // Preserve grants from the interim per-member format exactly.
+            colonyMembers.forEach(member -> colonyMemberRanks.put(member, ColonyRank.NEUTRAL));
+            nbt.getList("ColonyMemberPermissions").ifPresent(entries -> {
+                for (int i = 0; i < entries.size(); i++) {
+                    entries.getCompound(i).ifPresent(entry -> {
+                        UUID memberUuid = ColonyIdentityRules.parseUuid(
+                                entry.getString("PlayerUuid").orElse("")).orElse(null);
+                        if (memberUuid == null || !colonyMembers.contains(memberUuid)) return;
+                        Set<ColonyPermission> actions = java.util.EnumSet.noneOf(ColonyPermission.class);
+                        entry.getList("Actions").ifPresent(actionList -> {
+                            for (int j = 0; j < actionList.size(); j++) {
+                                actionList.getString(j).ifPresent(raw ->
+                                        ColonyPermission.parse(raw).ifPresent(actions::add));
+                            }
+                        });
+                        legacyMemberPermissionOverrides.put(memberUuid, actions);
+                    });
+                }
+            });
+        } else {
+            // Worlds older than the first permission implementation preserve the old member access.
+            colonyMembers.forEach(member -> colonyMemberRanks.put(member, ColonyRank.OFFICER));
+        }
         resourceStock.clear();
         nbt.getCompound("ResourceStock").ifPresent(stockTag -> stockTag.getKeys().forEach(key -> {
             Identifier itemId = Identifier.tryParse(key);

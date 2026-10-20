@@ -71,6 +71,35 @@ public final class ColonyManagementCommands {
             permissionCommand.then(permissionHall);
             root.then(permissionCommand);
 
+            var rankCommand = literal("rank");
+            var rankHall = argument("hall", BlockPosArgumentType.blockPos());
+            var rankPlayer = argument("player", EntityArgumentType.player());
+            var rankName = argument("rank", StringArgumentType.word());
+            rankName.executes(context -> setMemberRank(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    EntityArgumentType.getPlayer(context, "player"),
+                    StringArgumentType.getString(context, "rank")));
+            rankPlayer.then(rankName);
+            rankHall.then(rankPlayer);
+            rankCommand.then(rankHall);
+            root.then(rankCommand);
+
+            var rankPermissionCommand = literal("rank-permission");
+            var rankPermissionHall = argument("hall", BlockPosArgumentType.blockPos());
+            var rankPermissionRank = argument("rank", StringArgumentType.word());
+            var rankPermissionAction = argument("action", StringArgumentType.word());
+            var rankPermissionEnabled = argument("enabled", BoolArgumentType.bool());
+            rankPermissionEnabled.executes(context -> setRankPermission(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    StringArgumentType.getString(context, "rank"),
+                    StringArgumentType.getString(context, "action"),
+                    BoolArgumentType.getBool(context, "enabled")));
+            rankPermissionAction.then(rankPermissionEnabled);
+            rankPermissionRank.then(rankPermissionAction);
+            rankPermissionHall.then(rankPermissionRank);
+            rankPermissionCommand.then(rankPermissionHall);
+            root.then(rankPermissionCommand);
+
             dispatcher.register(root);
         });
     }
@@ -109,8 +138,8 @@ public final class ColonyManagementCommands {
         ServerPlayerEntity player = source.getPlayerOrThrow();
         TownHallBlockEntity hall = getHall(source, player, pos);
         if (hall == null) return 0;
-        if (!hall.isOwner(player)) {
-            player.sendMessage(Text.literal("Only the colony owner can change permission grants."), true);
+        if (!hall.hasPermission(player.getUuid(), ColonyPermission.MANAGE_MEMBERS)) {
+            player.sendMessage(Text.literal("You need manage_members permission to edit rank actions."), true);
             return 0;
         }
         ColonyPermission permission = ColonyPermission.parse(actionId).orElse(null);
@@ -122,9 +151,54 @@ public final class ColonyManagementCommands {
             player.sendMessage(Text.literal("Invite that player before assigning permissions."), true);
             return 0;
         }
-        hall.setMemberPermission(player, target.getUuid(), permission, enabled);
+        ColonyRank targetRank = hall.colonyRank(target.getUuid());
+        boolean changed = hall.setMemberPermission(player, target.getUuid(), permission, enabled);
+        player.sendMessage(Text.literal(changed
+                ? (enabled ? "Granted " : "Revoked ") + permission.id() + " for rank " + targetRank.id()
+                    + " (all members of that rank)."
+                : "That action already has the requested state for rank " + targetRank.id() + "."),
+                false);
+        return 1;
+    }
+
+    private static int setMemberRank(ServerCommandSource source, BlockPos pos, ServerPlayerEntity target,
+                                     String rankId)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null) return 0;
+        ColonyRank rank = ColonyRank.parse(rankId).orElse(null);
+        if (rank == null || rank == ColonyRank.OWNER) {
+            player.sendMessage(Text.literal("Rank must be officer, friend, neutral, or hostile; owner is reserved."), true);
+            return 0;
+        }
+        if (!hall.setMemberRank(player, target.getUuid(), rank)) {
+            player.sendMessage(Text.literal("You need manage_members permission; target must be a member and not the owner."), true);
+            return 0;
+        }
+        player.sendMessage(Text.literal("Set " + target.getName().getString() + " to rank " + rank.id() + "."), false);
+        return 1;
+    }
+
+    private static int setRankPermission(ServerCommandSource source, BlockPos pos, String rankId,
+                                         String actionId, boolean enabled)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null) return 0;
+        ColonyRank rank = ColonyRank.parse(rankId).orElse(null);
+        ColonyPermission permission = ColonyPermission.parse(actionId).orElse(null);
+        if (rank == null || rank == ColonyRank.OWNER || permission == null) {
+            player.sendMessage(Text.literal("Use rank officer/friend/neutral/hostile and a supported action id."), true);
+            return 0;
+        }
+        boolean changed = hall.setRankPermission(player, rank, permission, enabled);
+        if (!changed) {
+            player.sendMessage(Text.literal("You need manage_members permission, or the rank action already has that state."), true);
+            return 0;
+        }
         player.sendMessage(Text.literal((enabled ? "Granted " : "Revoked ") + permission.id()
-                + " for " + target.getName().getString() + "."), false);
+                + " for rank " + rank.id() + " (all current and future members)."), false);
         return 1;
     }
 

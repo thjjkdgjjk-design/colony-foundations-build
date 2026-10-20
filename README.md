@@ -29,3 +29,13 @@ The owner can manage the currently persisted Town Hall colony from within 8 bloc
 - `/colony permission <x> <y> <z> <online player> <action> <true|false>` — owner changes one of `break_blocks`, `place_blocks`, `use_blocks`, `manage_members`, `build_projects`, `assign_workers`.
 
 This is an incremental per-member action model. MineColonies shared rank presets, permission GUI, full event semantics and gameplay parity are not implemented yet; run CI and test in a disposable multiplayer world.
+
+
+### Colony permission ranks (incremental port)
+
+- `/colony rank <x> <y> <z> <online player> <officer|friend|neutral|hostile>` assigns a member rank.
+- `/colony rank-permission <x> <y> <z> <rank> <action> <true|false>` edits an action for all current and future members of that rank.
+- `/colony permission <x> <y> <z> <online player> <action> <true|false>` is retained as a compatibility command and edits the target member's rank profile, so all peers at that rank are affected.
+- Supported local actions: `break_blocks`, `place_blocks`, `use_blocks`, `manage_members`, `build_projects`, `assign_workers`.
+
+The model persists `OWNER/OFFICER/FRIEND/NEUTRAL/HOSTILE` rank IDs and profile actions. This is not full MineColonies permission parity: upstream actions beyond the six enforced here, alliance/hostile interaction, and the Town Hall permissions GUI remain open. Old saves without a permission-version marker migrate existing members to `officer` to preserve the prior broad access; intermediate saves keep explicit grants until the affected rank profile is edited.
