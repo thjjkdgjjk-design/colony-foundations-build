@@ -9,10 +9,10 @@ The build workflow publishes this add-on as its own JAR:
 
 ## In-game controls
 
-1. Put the JAR in `.minecraft/mods`; install Fabric API and run Java 22 as required by this build.
+1. Put the JAR in `.minecraft/mods`; install Fabric API for Minecraft 1.21.5. JDK 22 is used to build the mod; the mod itself supports Java 21+ as required by Minecraft 1.21.5.
 2. In Creative mode, take **Инструмент чертежей** from the Functional item group.
 3. Right-click in the air to open the catalog. The list is requested from the server and is paginated; type to search and press Enter to refresh. Backspace removes a search character; Home clears the filter.
-4. Select a blueprint, choose a 90-degree rotation, and press **Place (creative)**.
+4. Select a blueprint, choose a 90-degree rotation or mirror mode, then press **Разместить (творческий режим)**.
 5. To scan a structure, use the tool to right-click a block for the first corner and then the opposite corner. The resulting **Свиток чертежа** stores palette, block states, block-entity NBT and entities and can be used to place a copy.
 
 ## Loading the full MineColonies blueprint set
@@ -30,7 +30,7 @@ The pack includes multiple architectural styles and buildings, but this does **n
 - This is an ongoing porting prototype, not a complete Structurize replacement.
 - Structure placement is Creative-only and can overwrite terrain.
 - Structurize metadata such as palette, packed block grid, required-mod metadata, primary anchor, block-entity NBT and entity NBT is read. The full old-to-new DataFixer pipeline, tag substitutions, survival materials and staged worker construction are not implemented.
-- Mirroring, undo/redo, a true per-block-model ghost renderer, obstruction/material planning and full client/server test coverage remain unfinished.
+- Rotation and mirroring are implemented in the current catalog, but their results still need in-game regression testing. Undo/redo, a true per-block-model ghost renderer, survival material planning, staged worker construction, and full client/server test coverage remain unfinished.
 - Blueprints are from the user's uploaded source archive. Review and follow the licenses applicable to each original asset; the JAR's public release does not bundle the 9,515-file datapack.
 
 ## Source and licensing

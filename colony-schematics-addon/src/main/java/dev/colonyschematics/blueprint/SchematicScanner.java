@@ -80,7 +80,7 @@ public final class SchematicScanner {
             NbtCompound customData = new NbtCompound();
             customData.put("blueprint", blueprint);
             scroll.set(DataComponentTypes.CUSTOM_DATA, NbtComponent.of(customData));
-            scroll.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Blueprint: " + name));
+            scroll.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Чертёж: " + name));
 
             if (!player.getInventory().insertStack(scroll)) {
                 player.dropItem(scroll, false);

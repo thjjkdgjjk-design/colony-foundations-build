@@ -315,12 +315,12 @@ public final class SchematicLoader {
         String[] pieces = path.split("/");
         String style = pieces.length > 1 ? pieces[1] : "MineColonies";
         style = switch (style.toLowerCase(java.util.Locale.ROOT)) {
-            case "birch", "medievalbirch" -> "Birch";
-            case "darkoak", "medievaldarkoak" -> "Dark Oak";
-            case "defaultwooden", "medievaloak", "wooden" -> "Wooden";
-            case "stone", "medievalstone" -> "Stone";
-            case "jungle" -> "Jungle";
-            case "spruce" -> "Spruce";
+            case "birch", "medievalbirch" -> "Берёзовый стиль";
+            case "darkoak", "medievaldarkoak" -> "Стиль тёмного дуба";
+            case "defaultwooden", "medievaloak", "wooden" -> "Деревянный стиль";
+            case "stone", "medievalstone" -> "Каменный стиль";
+            case "jungle" -> "Стиль джунглей";
+            case "spruce" -> "Еловый стиль";
             default -> style.replace('_', ' ');
         };
         String file = pieces[pieces.length - 1].replaceAll("\\.(blueprint|nbt)$", "");
