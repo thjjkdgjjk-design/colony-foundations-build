@@ -14,6 +14,8 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtSizeTracker;
 import net.minecraft.registry.Registries;
+import net.minecraft.resource.Resource;
+import net.minecraft.resource.ResourceManager;
 import net.minecraft.state.property.Property;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -21,7 +23,10 @@ import net.minecraft.util.math.BlockPos;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -38,7 +43,7 @@ public final class SchematicLoader {
     private static final int MAX_DIMENSION = 128;
     private static final int MAX_VOLUME = 131_072;
     private static final int MAX_PALETTE = 65_535;
-    private static final Pattern ALLOWED_PATH = Pattern.compile(
+    private static final Pattern BUNDLED_PATH = Pattern.compile(
             "minecolonies/(birch|darkoak|defaultwooden|stone)/buildings/citizen/citizen[1-5]"
     );
 
@@ -73,11 +78,84 @@ public final class SchematicLoader {
         }
     }
 
+    public record CatalogEntry(Identifier id, String title) { }
+
+    /**
+     * Load a bundled catalog schematic. Datapack blueprints must be loaded using
+     * the server ResourceManager overload so the server, not the client, decides
+     * which construction resources are allowed.
+     */
     public static Schematic load(Identifier id) throws IOException {
-        if (!id.getNamespace().equals(ColonySchematics.MOD_ID) || !ALLOWED_PATH.matcher(id.getPath()).matches()) {
-            throw new IllegalArgumentException("Schematic identifier is not in the bundled catalog");
+        validateBundledId(id);
+        return loadBundled(id);
+    }
+
+    /** Load a bundled schematic or a blueprint supplied by an enabled server datapack. */
+    public static Schematic load(Identifier id, ResourceManager manager) throws IOException {
+        if (id == null || !id.getNamespace().equals(ColonySchematics.MOD_ID)
+                || id.getPath().contains("..") || id.getPath().isBlank()) {
+            throw new IllegalArgumentException("Schematic identifier is invalid");
         }
 
+        if (!id.getPath().startsWith("blueprints/")) {
+            validateBundledId(id);
+            return loadBundled(id);
+        }
+
+        String resourcePath = id.getPath();
+        for (String extension : List.of(".blueprint", ".nbt")) {
+            Identifier resourceId = Identifier.of(ColonySchematics.MOD_ID, resourcePath + extension);
+            Optional<Resource> resource = manager.getResource(resourceId);
+            if (resource.isPresent()) {
+                try (InputStream input = resource.get().getInputStream()) {
+                    NbtCompound root = NbtIo.readCompressed(input, NbtSizeTracker.of(MAX_NBT_BYTES));
+                    return fromNbt(id, root);
+                }
+            }
+        }
+        throw new IOException("No enabled datapack contains schematic " + id);
+    }
+
+    /** Build a bounded catalog from bundled defaults and all blueprint files in enabled datapacks. */
+    public static List<CatalogEntry> available(ResourceManager manager) {
+        Map<String, CatalogEntry> entries = new TreeMap<>();
+        String[][] styles = {
+                {"birch", "Birch"},
+                {"darkoak", "Dark Oak"},
+                {"defaultwooden", "Wooden"},
+                {"stone", "Stone"}
+        };
+        for (String[] style : styles) {
+            for (int tier = 1; tier <= 5; tier++) {
+                Identifier id = Identifier.of(ColonySchematics.MOD_ID,
+                        "minecolonies/" + style[0] + "/buildings/citizen/citizen" + tier);
+                entries.put(id.toString(), new CatalogEntry(id, style[1] + " — Citizen House " + tier));
+            }
+        }
+
+        manager.findResources("blueprints", id -> id.getPath().endsWith(".blueprint")
+                        || id.getPath().endsWith(".nbt"))
+                .forEach((resourceId, resource) -> {
+                    if (!resourceId.getNamespace().equals(ColonySchematics.MOD_ID)) return;
+                    String path = resourceId.getPath();
+                    String extension = path.endsWith(".blueprint") ? ".blueprint" : ".nbt";
+                    String withoutExtension = path.substring(0, path.length() - extension.length());
+                    if (!withoutExtension.startsWith("blueprints/") || withoutExtension.contains("..")) return;
+                    Identifier schematicId = Identifier.of(ColonySchematics.MOD_ID, withoutExtension);
+                    entries.put(schematicId.toString(), new CatalogEntry(schematicId, displayName(schematicId)));
+                });
+
+        return List.copyOf(entries.values());
+    }
+
+    private static void validateBundledId(Identifier id) {
+        if (id == null || !id.getNamespace().equals(ColonySchematics.MOD_ID)
+                || !BUNDLED_PATH.matcher(id.getPath()).matches()) {
+            throw new IllegalArgumentException("Schematic identifier is not in the bundled catalog");
+        }
+    }
+
+    private static Schematic loadBundled(Identifier id) throws IOException {
         String resourcePath = "/assets/" + ColonySchematics.MOD_ID + "/schematics/" + id.getPath() + ".nbt";
         NbtCompound root;
         try (InputStream input = ColonySchematics.class.getResourceAsStream(resourcePath)) {
@@ -234,15 +312,22 @@ public final class SchematicLoader {
     }
 
     private static String displayName(Identifier id) {
-        String[] pieces = id.getPath().split("/");
-        String style = switch (pieces.length > 1 ? pieces[1] : "") {
-            case "birch" -> "Birch";
-            case "darkoak" -> "Dark Oak";
-            case "defaultwooden" -> "Wooden";
-            case "stone" -> "Stone";
-            default -> "MineColonies";
+        String path = id.getPath();
+        if (path.startsWith("blueprints/")) path = path.substring("blueprints/".length());
+        String[] pieces = path.split("/");
+        String style = pieces.length > 1 ? pieces[1] : "MineColonies";
+        style = switch (style.toLowerCase(java.util.Locale.ROOT)) {
+            case "birch", "medievalbirch" -> "Birch";
+            case "darkoak", "medievaldarkoak" -> "Dark Oak";
+            case "defaultwooden", "medievaloak", "wooden" -> "Wooden";
+            case "stone", "medievalstone" -> "Stone";
+            case "jungle" -> "Jungle";
+            case "spruce" -> "Spruce";
+            default -> style.replace('_', ' ');
         };
-        String tier = pieces[pieces.length - 1].replaceAll("[^0-9]", "");
-        return style + " — Citizen House " + tier;
+        String file = pieces[pieces.length - 1].replaceAll("\\.(blueprint|nbt)$", "");
+        String title = file.replaceAll("([a-z])([0-9])", "$1 $2")
+                .replace('_', ' ').replace('-', ' ');
+        return style + " — " + title;
     }
 }
