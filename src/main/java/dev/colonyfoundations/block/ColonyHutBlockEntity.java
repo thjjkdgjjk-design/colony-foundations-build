@@ -480,6 +480,28 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return true;
     }
 
+    /**
+     * Release a worker when this hut is removed. If its entity is unloaded, the released
+     * tombstone is retained so CitizenAssignmentLifecycle can clear stale tags on load.
+     */
+    public void releaseAssignedCitizen(ServerWorld serverWorld) {
+        if (world != serverWorld || assignedCitizen == null) return;
+        UUID releasedUuid = assignedCitizen;
+        ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        directory.releaseCitizenAssignment(releasedUuid, serverWorld.getRegistryKey(), pos);
+        Entity entity = serverWorld.getEntity(releasedUuid);
+        if (entity instanceof VillagerEntity villager) {
+            villager.removeCommandTag(HUT_WORKER_TAG);
+            villager.removeCommandTag(assignmentTag());
+            removeJobTags(villager);
+            villager.setCustomName(null);
+            villager.setCustomNameVisible(false);
+            directory.forgetReleasedCitizenAssignment(releasedUuid);
+        }
+        assignedCitizen = null;
+        markDirty();
+    }
+
     private String assignmentTag() {
         return HUT_ASSIGNED_TAG_PREFIX + Long.toUnsignedString(pos.asLong(), 36);
     }

@@ -103,6 +103,15 @@ public final class ColonyHutBlock extends BlockWithEntity {
     }
 
     @Override
+    public void onStateReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean moved) {
+        if (!state.isOf(newState.getBlock()) && world instanceof ServerWorld serverWorld
+                && world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut) {
+            hut.releaseAssignedCitizen(serverWorld);
+        }
+        super.onStateReplaced(state, world, pos, newState, moved);
+    }
+
+    @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(
             World world, BlockState state, BlockEntityType<T> type) {
         return BlockWithEntity.validateTicker(type, ModBlockEntities.COLONY_HUT, ColonyHutBlockEntity::tick);

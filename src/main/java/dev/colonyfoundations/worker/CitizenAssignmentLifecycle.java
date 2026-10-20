@@ -36,6 +36,9 @@ public final class CitizenAssignmentLifecycle {
 
         if (!assignment.isActive()) {
             removeAssignmentTags(citizen);
+            if (BUILDER_ROLE.equals(assignment.roleId())) {
+                citizen.removeCommandTag(WorkerRoleRules.BUILDER_TAG);
+            }
             if (WORKER_ROLE.equals(assignment.roleId())) {
                 citizen.removeCommandTag(ColonyHutBlockEntity.HUT_WORKER_TAG);
             }

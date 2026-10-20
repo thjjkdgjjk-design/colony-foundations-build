@@ -721,9 +721,16 @@ public final class TownHallBlockEntity extends BlockEntity {
     private void finish(ServerWorld world, VillagerEntity builder) {
         projectActive = false;
         projectComplete = true;
-        if (builder != null) {
-            builder.removeCommandTag(assignmentTag(world, pos));
-            ColonyClaimState.get(world).releaseCitizenAssignment(builder.getUuid(), world.getRegistryKey(), pos);
+        UUID completedBuilderUuid = builder != null ? builder.getUuid() : assignedBuilderUuid;
+        if (completedBuilderUuid != null) {
+            ColonyClaimState directory = ColonyClaimState.get(world);
+            directory.releaseCitizenAssignment(completedBuilderUuid, world.getRegistryKey(), pos);
+            if (builder != null) {
+                builder.removeCommandTag(assignmentTag(world, pos));
+                builder.removeCommandTag(BUILDER_TAG);
+                // The loaded villager's tags are reconciled now, so no tombstone needs to remain.
+                directory.forgetReleasedCitizenAssignment(completedBuilderUuid);
+            }
         }
         assignedBuilderUuid = null;
         lastBuilderPosition = null;
