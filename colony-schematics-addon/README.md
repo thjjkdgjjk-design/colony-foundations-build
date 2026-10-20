@@ -1,24 +1,35 @@
-# Colony Schematics (separate mod)
+# Colony Schematics — independent Fabric 1.21.5 add-on
 
-A separate Fabric 1.21.5 JAR for browsing and test-placing bundled MineColonies citizen-house schematics.
+A separate Fabric mod JAR for opening a catalog and test-placing Structurize v1 NBT blueprints.
+
+## Current functionality
+
+- Catalog of 20 citizen-house schematics (4 styles × 5 tiers).
+- Quarter-turn rotation and Structurize primary_offset anchor handling.
+- Palette and packed block-grid decoding.
+- Attempts to restore block-entity NBT and serialized entities after placing block states.
+- Reports required-mod metadata; unknown blocks are replaced with air.
+- Safe limits for NBT size and structure dimensions.
+
+## Run
+
+1. Put the JAR in .minecraft/mods with Fabric Loader 0.16.14+ and Fabric API 0.119.5+ for Minecraft 1.21.5.
+2. Launch a test world and use Schematic Tool from the Functional item group in Creative mode.
+3. Select a house, choose rotation, and use Place (creative).
+4. Test in a backup world first. Placement overwrites blocks in the target structure volume.
+
+## Known gaps versus Structurize
+
+This is not yet a complete Structurize port. It does not implement scan/save, mirroring/undo, visual block-model preview, palette replacement, tag/fluid/solid substitutions, requirement accounting, surface flattening, structure update handling, full NBT data fixing, or a survival build planner. Restoring modded block entities can fail if their mod is absent or their 1.20.1 NBT is incompatible with 1.21.5. This build has passed CI compilation only; actual in-game placement still needs testing.
 
 ## Build
 
-Use JDK 22 and run:
+Use JDK 22:
 
-```sh
-gradle --no-daemon build
-```
+    gradle --no-daemon build
 
-Output: `build/libs/colony-schematics-fabric-1.21.5-0.1.0-alpha.1.jar`.
+The resulting file is build/libs/colony-schematics-fabric-1.21.5-0.1.0-alpha.1.jar.
 
-## In-game
+## Upstream source and resource licensing
 
-1. Put this JAR in `.minecraft/mods`.
-2. In Creative mode, take **Schematic Tool** from the Functional item group.
-3. Right-click with it to open the catalog of 20 citizen-house variants (4 styles × 5 tiers).
-4. Select a house, choose rotation, and use **Place (creative)**. The structure is placed a few blocks in front of the player.
-
-This is a prototype schematic tool, not an official Structurize port. It imports block palette/grid data only; block entities, inventories, entities, custom substitution logic, terrain adaptation, and survival material costs are not copied/implemented. Use in a test world first: placement overwrites blocks in the target volume.
-
-The project contains original loader/GUI code plus schematic assets from `ldtteam/minecolonies-schematics`, pinned at commit `ae86ba500d3172220669657e0102861fa8b7f3be`. See `THIRD_PARTY_NOTICES.md` and `LICENSE`.
+The Structurize source is GPL-3.0. The MineColonies Java source is GPL-3.0, but its source/resources/assets/minecolonies/LICENSE explicitly says All Rights Reserved. The public schematics repository README describes the files as being for use in MineColonies, but does not establish an explicit blanket license in the pinned revision. Therefore this prototype includes only the limited 20-house set already used by its current CI; no broad claim is made that all original MineColonies art, assets, or blueprints can be redistributed freely. See root PORT_AUDIT.md and THIRD_PARTY_NOTICES.md.
