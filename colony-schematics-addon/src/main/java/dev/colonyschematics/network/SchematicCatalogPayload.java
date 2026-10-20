@@ -1,7 +1,7 @@
 package dev.colonyschematics.network;
 
 import dev.colonyschematics.ColonySchematics;
-import net.minecraft.network.RegistryByteBuf;
+import io.netty.buffer.ByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
@@ -19,7 +19,7 @@ public record SchematicCatalogPayload(
     private static final int MAX_PACKET_ENTRIES = PAGE_SIZE;
 
     public record Entry(Identifier id, String title) {
-        public static final PacketCodec<RegistryByteBuf, Entry> CODEC = PacketCodec.tuple(
+        public static final PacketCodec<ByteBuf, Entry> CODEC = PacketCodec.tuple(
                 Identifier.PACKET_CODEC, Entry::id,
                 PacketCodecs.string(512), Entry::title,
                 Entry::new
@@ -29,7 +29,7 @@ public record SchematicCatalogPayload(
     public static final Id<SchematicCatalogPayload> ID =
             new Id<>(Identifier.of(ColonySchematics.MOD_ID, "schematic_catalog"));
 
-    public static final PacketCodec<RegistryByteBuf, SchematicCatalogPayload> CODEC = PacketCodec.tuple(
+    public static final PacketCodec<ByteBuf, SchematicCatalogPayload> CODEC = PacketCodec.tuple(
             PacketCodecs.VAR_INT, SchematicCatalogPayload::page,
             PacketCodecs.string(128), SchematicCatalogPayload::query,
             PacketCodecs.VAR_INT, SchematicCatalogPayload::totalPages,
