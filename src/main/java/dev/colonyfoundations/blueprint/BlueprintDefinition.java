@@ -1,6 +1,7 @@
 package dev.colonyfoundations.blueprint;
 
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
 
 import java.util.List;
 
@@ -11,9 +12,11 @@ public record BlueprintDefinition(
         int sizeX,
         int sizeY,
         int sizeZ,
+        BlockPos primaryOffset,
         List<CottageBlueprint.Placement> placements
 ) {
     public BlueprintDefinition {
+        primaryOffset = primaryOffset == null ? BlockPos.ORIGIN : primaryOffset.toImmutable();
         placements = List.copyOf(placements);
     }
 }

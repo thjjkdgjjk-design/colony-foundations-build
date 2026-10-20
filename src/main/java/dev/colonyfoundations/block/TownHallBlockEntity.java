@@ -214,7 +214,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         }
 
         CottageBlueprint.Placement placement = plan.get(hall.progress);
-        BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation));
+        BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation)
+                .subtract(rotate(definition.primaryOffset(), definition, hall.rotation)));
         BlockState oldState = serverWorld.getBlockState(target);
         if (!(oldState.isAir() || oldState.isReplaceable()) || !oldState.getFluidState().isEmpty()) {
             hall.skippedObstructions++;

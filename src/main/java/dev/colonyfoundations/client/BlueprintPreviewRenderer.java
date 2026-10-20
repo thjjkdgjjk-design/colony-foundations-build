@@ -43,7 +43,8 @@ public final class BlueprintPreviewRenderer {
         int limit = Math.min(MAX_PREVIEW_BLOCKS, definition.placements().size());
         for (int i = 0; i < limit; i++) {
             CottageBlueprint.Placement placement = definition.placements().get(i);
-            BlockPos offset = rotate(placement.offset(), definition, screen.previewRotation());
+            BlockPos offset = rotate(placement.offset(), definition, screen.previewRotation())
+                    .subtract(rotate(definition.primaryOffset(), definition, screen.previewRotation()));
             BlockPos target = origin.add(offset);
             BlockState existing = context.world().getBlockState(target);
             boolean clear = (existing.isAir() || existing.isReplaceable()) && existing.getFluidState().isEmpty();

@@ -12,7 +12,7 @@ import java.util.List;
 public final class CottageBlueprint {
     private static final Identifier COTTAGE_ID = Identifier.of("colony_foundations", "cottage");
     private static final BlueprintDefinition BUILT_IN_COTTAGE =
-            new BlueprintDefinition(COTTAGE_ID, "Стартовый коттедж", 7, 8, 7, createCottage());
+            new BlueprintDefinition(COTTAGE_ID, "Стартовый коттедж", 7, 8, 7, BlockPos.ORIGIN, createCottage());
 
     private CottageBlueprint() { }
 

@@ -120,6 +120,18 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
 
             List<CottageBlueprint.Placement> placements = new ArrayList<>(blocks.size());
             int maxX = 0, maxY = 0, maxZ = 0;
+            BlockPos primaryOffset = BlockPos.ORIGIN;
+            if (root.has("anchor")) {
+                JsonArray anchor = root.getAsJsonArray("anchor");
+                if (anchor == null || anchor.size() != 3) {
+                    throw new IllegalArgumentException("anchor must be [x,y,z]");
+                }
+                int ax = anchor.get(0).getAsInt();
+                int ay = anchor.get(1).getAsInt();
+                int az = anchor.get(2).getAsInt();
+                validatePosition(ax, ay, az);
+                primaryOffset = new BlockPos(ax, ay, az);
+            }
             for (JsonElement element : blocks) {
                 if (!element.isJsonObject()) throw new IllegalArgumentException("each blocks entry must be an object");
                 JsonObject entry = element.getAsJsonObject();
@@ -137,7 +149,7 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
                 maxY = Math.max(maxY, y);
                 maxZ = Math.max(maxZ, z);
             }
-            return new BlueprintDefinition(id, displayTitle(id), maxX + 1, maxY + 1, maxZ + 1, placements);
+            return new BlueprintDefinition(id, displayTitle(id), maxX + 1, maxY + 1, maxZ + 1, primaryOffset, placements);
         }
     }
 
@@ -190,7 +202,17 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
                 }
             }
         }
-        return new BlueprintDefinition(id, displayTitle(id), sizeX, sizeY, sizeZ, placements);
+        return new BlueprintDefinition(id, displayTitle(id), sizeX, sizeY, sizeZ, readPrimaryOffset(root), placements);
+    }
+
+    private static BlockPos readPrimaryOffset(NbtCompound root) {
+        NbtCompound optionalData = root.getCompound("optional_data").orElse(new NbtCompound());
+        NbtCompound structurizeData = optionalData.getCompound("structurize").orElse(new NbtCompound());
+        NbtCompound offset = structurizeData.getCompound("primary_offset").orElse(new NbtCompound());
+        return new BlockPos(
+                offset.getInt("x").orElse(0),
+                offset.getInt("y").orElse(0),
+                offset.getInt("z").orElse(0));
     }
 
     private static BlockState readNbtBlockState(NbtCompound tag) {
