@@ -1,20 +1,62 @@
-# Port audit — Fabric 1.21.5 / Java 22
+# MineColonies → Fabric 1.21.5 port audit
 
-## Scope
-The uploaded Forge MineColonies, Structurize, BlockUI, Domum Ornamentum, MultiPiston, TownTalk, and ChristmasColonies sources are inputs for a future porting effort. This repository does **not** contain a complete port of those projects and intentionally does not redistribute their code/assets.
+Updated: 2026-10-20. This file is the working parity checklist, not a claim of completion.
 
-## Implemented in this clean-room prototype
-- Fabric entrypoint and registrations.
-- Town Hall block and block entity.
-- Builder Contract callback that marks a vanilla villager as a builder.
-- A hard-coded vanilla cottage blueprint.
-- Persistent build progress with one placement every 10 server ticks, provided a builder can reach the work spot.
-- Build uses vanilla blocks only and skips nonreplaceable cells.
+## User-supplied source inputs inspected
 
-## Still out of scope
-- MineColonies professions, worker AI, economy, storage/warehouses, requests, research, raids, colony claims, network menus, and full blueprint/structure system.
-- Porting upstream Forge APIs to Fabric in the dependency projects.
-- Compatibility testing against a large modpack.
+| Project/source | Source target noted in archive | Java files | Files mentioning Forge/NeoForge APIs (approx.) | Current status |
+|---|---|---:|---:|---|
+| MineColonies | 1.20.1 / Forge | 2,102 | 499 | Not ported; main colony runtime is still a small prototype |
+| Structurize | 1.20.1 / Forge | 223 | 86 | Partial NBT parser/placement prototype in Colony Schematics |
+| BlockUI | 1.21.1 / NeoForge | 109 | 33 | Not ported |
+| Domum Ornamentum | 1.20.1 / Forge | 226 | 94 | Not ported |
+| MultiPiston / Piston Unlimited | 1.20 / Forge | 12 | 8 | Not ported |
+| TownTalk | 1.19.2 / Forge | 2 | 1 | Not ported |
+| ChristmasColonies | JAR supplied; source archive not present in this upload set | — | — | Not ported |
+| MineFortress | JAR supplied separately; source archive not present in this upload set | — | — | Not ported |
 
-## CI
-GitHub Actions is configured to compile against Minecraft 1.21.5 with Fabric Loom and JDK 22, emit Java 21 bytecode, upload a build artifact, and attach the distributable JAR to a release only after successful compilation.
+These counts are source scans, not an estimate of the complete number of required changes. The practical dependency order is BlockUI → Structurize and Domum Ornamentum → MultiPiston/TownTalk integrations → MineColonies core → optional add-ons.
+
+## Current project layers
+
+### Colony Foundations
+- Fabric bootstrap, Town Hall block entity, builder-contract item, vanilla-villager work loop and a basic blueprint-building queue.
+- Does not provide the original colony model, profession system, worker-specific AI, requests, warehouse logistics, colony permissions, research, raids, diseases, happiness, or original MineColonies blocks/items.
+
+### Colony Schematics (separate JAR)
+- Separate Fabric mod ID and catalog item.
+- 20 citizen-house NBT assets (4 styles × 5 tiers).
+- Structurize v1 palette/packed-block decoding and block-state rotation.
+- Latest port step adds reading NBT for block entities/entities and handles the Structurize primary anchor during placement. This step must pass CI and be tested in-game before being treated as verified.
+- Not yet a complete Structurize implementation: no scan/save flow, visual block models for ghost preview, mirroring, undo/redo, substitution handlers, data fixing, requirements/material accounting, or build-work-order integration.
+
+## Missing MineColonies feature groups
+
+- Colony lifecycle and data: create/found colony, colony IDs, chunk/area ownership, distance limits, permissions, allies, colony rename/delete/reactivate, player-to-colony mapping, persistence and migration.
+- Citizens: custom citizen entity, names/skills/traits/age/family/needs, hiring, housing and beds, schedules, pathfinding, death/respawn, happiness, disease and education.
+- Jobs and worker AI: builder, courier, miner, farmer, fisherman, lumberjack, forester, cook, baker, smelter, crafter, guard and remaining job types, each with job-specific goals and hut integration.
+- Construction: build/upgrade/repair orders, builder hut and worker assignment, staged blueprint placement, material requests, inventory accounting, obstruction/rotation/mirror/terrain logic, building levels, work progress, completion callbacks, events and server-client synchronization.
+- Logistics/economy: warehouse, courier networks, racks, inventories, requests, request priorities, crafting dependencies, delivery, minimum stock, tools/equipment, fuel/food and trade.
+- Buildings/content: town hall, builder hut, citizen housing, all job huts, warehouse, university, guard towers, tavern, bakery, farms, decoration blocks, block-entity logic, recipes, loot tables, tags, advancements and translations.
+- Gameplay systems: research tree, raids, guards/combat, barbarians/monsters, colony stats and ranking, quests/achievements, expeditions where present in the source version.
+- Client/UI: BlockUI replacement, town hall/hut screens, lists, worker assignment, inventories, task trees, resource details, schematic selection/editor, minimap/colony map and sync packets.
+- Dependency APIs: Domum Ornamentum block/material palette, MultiPiston, TownTalk, integrations/optional mods and 1.20.1→1.21.5 API/data-schema migration.
+
+## Test gates
+
+1. CI clean build on JDK 22 (source bytecode release 21).
+2. Client launch with Fabric API only; verify entrypoints/resources and language fallback.
+3. Dedicated server launch and multiplayer join.
+4. Schematic round-trip: palette, block states, block entities, entities, rotation, anchor, missing-mod handling and reload.
+5. Save/reload colony data and active work orders.
+6. Citizen hiring, housing, work assignment, navigation, death/recovery and job completion.
+7. Regression suite for world border, dimension build height, chunk boundaries/unloads, occupied cells, missing blocks/mods and malformed NBT.
+8. Profile server tick cost as colony/citizen/build-order count grows.
+
+## Resource licensing note
+
+The MineColonies Java source uses GPL-3.0, while its own resources directory has a separate assets/minecolonies/LICENSE stating “All Rights Reserved”. The public schematic repository's README documents its intended use for MineColonies but does not itself establish a broad redistribution grant in the revision reviewed. Do not treat source-code GPL as a blanket license for textures, sounds, GUI art, models or all schematic assets. Replacement art or an explicit asset license/permission is required before claiming that the entire original visual content has been ported and redistributed.
+
+## Verification statement
+
+CI compilation proves source compatibility with the compile environment only; it does not prove behavior in Minecraft. The complete MineColonies feature set is not yet ported.
