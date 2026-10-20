@@ -27,6 +27,10 @@ public final class ProjectNetworking {
         BlockPos pos = payload.hallPos();
         if (!isNear(player, pos)) return;
         if (!(player.getWorld().getBlockEntity(pos) instanceof TownHallBlockEntity hall)) return;
+        if (!hall.canManage(player)) {
+            sendStatus(player, pos);
+            return;
+        }
 
         if (payload.action() == 2) {
             hall.togglePause(player);
@@ -57,6 +61,7 @@ public final class ProjectNetworking {
     private static void sendStatus(ServerPlayerEntity player, BlockPos pos) {
         if (!isNear(player, pos)) return;
         if (!(player.getWorld().getBlockEntity(pos) instanceof TownHallBlockEntity hall)) return;
+        hall.ensureFounded(player);
         ServerPlayNetworking.send(player, new ProjectStatusPayload(
                 pos, hall.statusForScreen(), hall.siteOffsetX(), hall.siteOffsetZ()));
     }
