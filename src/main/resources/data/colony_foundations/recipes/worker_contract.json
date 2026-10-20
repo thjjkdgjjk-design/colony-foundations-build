@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " P ",
+    "ESE",
+    " P "
+  ],
+  "key": {
+    "P": { "item": "minecraft:paper" },
+    "E": { "item": "minecraft:emerald" },
+    "S": { "item": "minecraft:stick" }
+  },
+  "result": {
+    "id": "colony_foundations:worker_contract",
+    "count": 1
+  }
+}
