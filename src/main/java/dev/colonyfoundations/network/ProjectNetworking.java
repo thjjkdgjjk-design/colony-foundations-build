@@ -41,7 +41,7 @@ public final class ProjectNetworking {
                 || payload.rotation() < 0 || payload.rotation() > 3
                 || payload.siteOffsetX() < -64 || payload.siteOffsetX() > 64
                 || payload.siteOffsetZ() < -64 || payload.siteOffsetZ() > 64) return;
-        if (BlueprintRegistry.getDefinition(payload.blueprintId()).isEmpty()) {
+        if (BlueprintRegistry.getBuildDefinition(payload.blueprintId()).isEmpty()) {
             player.sendMessage(Text.literal("Чертёж не найден. Перезапустите мир или проверьте ресурсы мода."), true);
             ColonyFoundations.LOGGER.warn("Player {} requested missing blueprint {}",
                     player.getName().getString(), payload.blueprintId());

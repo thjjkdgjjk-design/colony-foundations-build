@@ -166,7 +166,7 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
-        BlueprintDefinition definition = BlueprintRegistry.getDefinition(newBlueprintId).orElse(null);
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(newBlueprintId).orElse(null);
         if (definition == null || definition.placements().isEmpty()) {
             player.sendMessage(Text.literal("[Колония] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
             return;
@@ -203,6 +203,11 @@ public final class TownHallBlockEntity extends BlockEntity {
     public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation,
                                           int requestedOffsetX, int requestedOffsetZ, ServerPlayerEntity player) {
         if (blueprintId.equals(requestedBlueprint)) {
+            BlueprintDefinition selectedDefinition = BlueprintRegistry.getBuildDefinition(requestedBlueprint).orElse(null);
+            if (selectedDefinition == null) {
+                player.sendMessage(Text.literal("[Колония] Сохранённый чертёж недоступен. Восстановите его datapack или выберите другую схему."), true);
+                return;
+            }
             if (!projectActive && progress == 0 && !projectComplete) {
                 rotation = Math.floorMod(requestedRotation, 4);
                 siteOffsetX = clampSiteOffset(requestedOffsetX);
@@ -211,8 +216,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             int moved = depositMaterials(player);
             player.sendMessage(Text.literal("[Колония] В ратушу перенесено предметов: " + moved
                     + ". Запас стройки обновлён."), true);
-            BlueprintRegistry.getDefinition(requestedBlueprint)
-                    .ifPresent(selected -> notifyCompatibilityWarnings(selected, player));
+            notifyCompatibilityWarnings(selectedDefinition, player);
             markDirty();
             return;
         }
@@ -220,7 +224,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             player.sendMessage(Text.literal("[Колония] Нельзя сменить чертёж, пока текущий проект не завершён."), true);
             return;
         }
-        BlueprintDefinition definition = BlueprintRegistry.getDefinition(requestedBlueprint).orElse(null);
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(requestedBlueprint).orElse(null);
         if (definition == null) {
             player.sendMessage(Text.literal("[Колония] Чертёж не найден."), true);
             return;
@@ -246,7 +250,8 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     private int depositMaterials(PlayerEntity player) {
-        BlueprintDefinition definition = currentDefinition();
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(blueprintId).orElse(null);
+        if (definition == null) return 0;
         Map<Identifier, Integer> required = remainingRequirements(definition);
         int movedTotal = 0;
 
@@ -286,8 +291,6 @@ public final class TownHallBlockEntity extends BlockEntity {
 
     public String statusForScreen() {
         String state = projectComplete ? "Завершено" : projectActive ? "Строится" : progress > 0 ? "Пауза" : "Не начато";
-        BlueprintDefinition definition = currentDefinition();
-        int total = definition.placements().size();
         String stock = resourceStock.entrySet().stream()
                 .sorted(Map.Entry.<Identifier, Integer>comparingByValue().reversed())
                 .limit(2)
@@ -295,9 +298,20 @@ public final class TownHallBlockEntity extends BlockEntity {
                 .collect(java.util.stream.Collectors.joining(", "));
         if (stock.isBlank()) stock = "пусто";
         if (stock.length() > 70) stock = stock.substring(0, 67) + "...";
-        return "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\nВладелец: "
-                + (ownerName.isBlank() ? "не назначен" : ownerName)
-                + "\n" + state + "\nПрогресс: " + Math.min(progress, total) + "/" + total
+
+        Optional<BlueprintDefinition> definition = BlueprintRegistry.getBuildDefinition(blueprintId);
+        String heading = "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\nВладелец: "
+                + (ownerName.isBlank() ? "не назначен" : ownerName);
+        if (definition.isEmpty()) {
+            String reason = projectIssue.isBlank()
+                    ? "Восстановите datapack или файл схемы для продолжения."
+                    : projectIssue;
+            return heading + "\nСхема недоступна\nID: " + blueprintId
+                    + "\nПрогресс: " + progress + "\nСклад: " + stock + "\nПричина: " + reason;
+        }
+
+        int total = definition.get().placements().size();
+        return heading + "\n" + state + "\nПрогресс: " + Math.min(progress, total) + "/" + total
                 + "\nСклад: " + stock
                 + (projectIssue.isBlank() ? "" : "\nПричина: " + projectIssue);
     }
@@ -305,6 +319,14 @@ public final class TownHallBlockEntity extends BlockEntity {
     public void togglePause(PlayerEntity player) {
         if (projectComplete) {
             player.sendMessage(Text.literal("[Колония] Проект завершён. Выбери чертёж и начни новый заказ."), true);
+            return;
+        }
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(blueprintId).orElse(null);
+        if (definition == null) {
+            projectActive = false;
+            projectIssue = "Сохранённый чертёж недоступен: " + blueprintId;
+            markDirty();
+            player.sendMessage(Text.literal("[Колония] Нельзя возобновить стройку: сохранённая схема недоступна. Восстановите datapack или файл схемы."), true);
             return;
         }
         if (!projectActive && progress == 0 && projectIssue.isBlank()) {
@@ -315,7 +337,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectIssue = projectActive ? "" : "Приостановлено пользователем";
         markDirty();
         player.sendMessage(Text.literal("[Колония] Строительство " + (projectActive ? "возобновлено" : "приостановлено")
-                + ": " + progress + "/" + currentDefinition().placements().size()), true);
+                + ": " + progress + "/" + definition.placements().size()), true);
     }
 
     public static void tick(World world, BlockPos pos, BlockState state, TownHallBlockEntity hall) {
@@ -324,9 +346,23 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (!hall.projectActive) return;
         if (serverWorld.getTime() % 10L != 0L) return;
 
-        BlueprintDefinition definition = hall.currentDefinition();
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(hall.blueprintId).orElse(null);
+        if (definition == null) {
+            hall.pauseForPlacementIssue(serverWorld, pos, pos,
+                    "Сохранённый чертёж " + hall.blueprintId
+                            + " недоступен. Восстановите datapack или повторно установите схему");
+            return;
+        }
         List<CottageBlueprint.Placement> plan = definition.placements();
-        if (plan.isEmpty()) return;
+        if (plan.isEmpty()) {
+            hall.pauseForPlacementIssue(serverWorld, pos, pos, "Сохранённый чертёж не содержит блоков");
+            return;
+        }
+        if (hall.progress > plan.size()) {
+            hall.pauseForPlacementIssue(serverWorld, pos, pos,
+                    "Сохранённый прогресс превышает размер текущей версии схемы; данные не будут перезаписаны автоматически");
+            return;
+        }
         if (hall.progress >= plan.size()) {
             hall.finish(serverWorld, hall.findAssignedBuilder(serverWorld, pos));
             return;
@@ -569,10 +605,6 @@ public final class TownHallBlockEntity extends BlockEntity {
         };
     }
 
-    private BlueprintDefinition currentDefinition() {
-        return BlueprintRegistry.getDefinition(blueprintId).orElseGet(CottageBlueprint::defaultDefinition);
-    }
-
     private VillagerEntity findAssignedBuilder(ServerWorld world, BlockPos pos) {
         if (assignedBuilderUuid != null) {
             var entity = world.getEntity(assignedBuilderUuid);
@@ -672,12 +704,26 @@ public final class TownHallBlockEntity extends BlockEntity {
             int amount = Math.max(0, stockTag.getInt(key).orElse(0));
             if (itemId != null && amount > 0 && Registries.ITEM.containsId(itemId)) resourceStock.put(itemId, amount);
         }));
-        int max = Math.max(1, currentDefinition().placements().size());
-        progress = Math.min(progress, max);
-        if (progress >= max) {
-            projectComplete = true;
-            projectActive = false;
-            projectIssue = "";
+        // Bound corrupt NBT even when a datapack is temporarily unavailable.
+        progress = Math.min(progress, 131_072);
+        if (!projectComplete) {
+            BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(blueprintId).orElse(null);
+            if (definition == null) {
+                projectActive = false;
+                if (projectIssue.isBlank()) {
+                    projectIssue = "Сохранённый чертёж недоступен: " + blueprintId;
+                }
+            } else {
+                int max = definition.placements().size();
+                if (progress > max) {
+                    projectActive = false;
+                    projectIssue = "Сохранённый прогресс превышает размер текущей версии схемы";
+                } else if (progress >= max) {
+                    projectComplete = true;
+                    projectActive = false;
+                    projectIssue = "";
+                }
+            }
         }
     }
 }

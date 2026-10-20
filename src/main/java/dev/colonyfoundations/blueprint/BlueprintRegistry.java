@@ -59,6 +59,19 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         return Optional.ofNullable(BLUEPRINTS.get(id));
     }
 
+    /**
+     * Build-time lookup preserves only the intentional built-in cottage fallback.
+     * An unavailable saved schematic must never silently become a different building.
+     */
+    public static Optional<BlueprintDefinition> getBuildDefinition(Identifier id) {
+        Optional<BlueprintDefinition> loaded = getDefinition(id);
+        if (loaded.isPresent()) return loaded;
+        if (Identifier.of(ColonyFoundations.MOD_ID, "cottage").equals(id)) {
+            return Optional.of(CottageBlueprint.defaultDefinition());
+        }
+        return Optional.empty();
+    }
+
     public static BlueprintDefinition readNativeNbt(Identifier id, Resource resource) throws IOException {
         return readStructurizeNbt(id, resource);
     }
