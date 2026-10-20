@@ -423,6 +423,18 @@ public final class CitizenJobController {
 
         courierHut.ensureCourierTransferId();
         String transferId = courierHut.courierTransferId();
+        // Queue state proves this exact payload has already been counted even if its receipt
+        // aged out of the bounded block-entity journal: never route that carrier copy again.
+        if (courierHut.courierCargoCount() > 0 && request.lastTransferId().equals(transferId)) {
+            String cargoItemId = courierHut.courierCargoItemId();
+            int cargoCount = courierHut.courierCargoCount();
+            if (!cargoItemId.isBlank() && cargoCount > 0 && courierHut.countItem(cargoItemId) >= cargoCount) {
+                courierHut.consumeItem(cargoItemId, cargoCount);
+            }
+            courierHut.clearCourierCargo();
+            courierHut.clearCourierTask();
+            return;
+        }
         if (request.status().equals(ColonyRequestRules.Status.OPEN.id())
                 && courierHut.courierCargoCount() > 0) {
             request = requests.reserve(requestId, courier.getUuid(), transferId,
@@ -577,7 +589,7 @@ public final class CitizenJobController {
         }
         Identifier itemId = Identifier.tryParse(current.itemId());
         if (itemId == null || !Registries.ITEM.containsId(itemId)) {
-            requests.release(current.requestId(), courier.getUuid(), transferId, world.getTime());
+            requests.release(current.requestId(), courier.getUuid(), courierHut.courierTransferId(), world.getTime());
             courierHut.clearCourierTask();
             return;
         }

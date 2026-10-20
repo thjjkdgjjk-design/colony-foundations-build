@@ -440,3 +440,10 @@ CI compilation proves source compatibility with the compile environment only; it
 - Переходы begin/release/recordDelivery получили проверку UUID курьера и transfer ID, чтобы устаревшая задача не могла закрыть новый рейс того же запроса. Добавлены тесты сохранения токена/склада, учёта частичной доставки и отказа повторно записать один рейс.
 - Повторное очищение груза теперь требует совпадения lastTransferId конкретного рейса; один только статус DELIVERED не считается достаточным подтверждением. Учтён также склад в позиции (0,0,0), если у рейса сохранён transfer ID.
 - Требуется новый CI для схемы Codec и интеграции; реальный crash/restart-тест Minecraft мира в этой среде не запускался.
+
+
+### CI correction — duplicate methods and transfer variable scope
+
+- Run `39503041433` failed at `compileJava` with duplicate signatures for `beginDelivery(String, UUID, long)`, `release(String, UUID, long)` and `recordDelivery(String, UUID, int, long)`. The transfer-aware overloads had been added while the old method block remained below; duplicate declarations have now been removed while keeping the original methods once.
+- The same full log identifies `CitizenJobController.java:580`: the invalid-item branch referenced local variable `transferId` before it was declared. It now uses the saved transfer token on the courier hut.
+- The controller now also clears a carrier copy when the queue's `lastTransferId` proves the exact trip was counted, even if the bounded destination receipt journal has subsequently evicted that receipt.

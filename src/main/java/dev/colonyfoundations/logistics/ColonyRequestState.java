@@ -230,18 +230,6 @@ public final class ColonyRequestState extends PersistentState {
         return transition(requestId, now, current -> ColonyRequestRules.deliver(current, courier, amount));
     }
 
-    public Optional<RequestRecord> beginDelivery(String requestId, UUID courier, long now) {
-        return transition(requestId, now, current -> ColonyRequestRules.beginDelivery(current, courier));
-    }
-
-    public Optional<RequestRecord> release(String requestId, UUID courier, long now) {
-        return transition(requestId, now, current -> ColonyRequestRules.release(current, courier));
-    }
-
-    public Optional<RequestRecord> recordDelivery(String requestId, UUID courier, int amount, long now) {
-        return transition(requestId, now, current -> ColonyRequestRules.deliver(current, courier, amount));
-    }
-
     public Optional<RequestRecord> cancel(String requestId, UUID colonyOwner, long now) {
         RequestRecord current = requests.get(requestId);
         if (current == null || colonyOwner == null
