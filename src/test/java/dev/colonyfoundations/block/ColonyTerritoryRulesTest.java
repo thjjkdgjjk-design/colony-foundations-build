@@ -57,6 +57,25 @@ class ColonyTerritoryRulesTest {
     }
 
     @Test
+    void ownerLookupRejectsAmbiguousOverlappingClaims() {
+        UUID ownerA = UUID.randomUUID();
+        UUID ownerB = UUID.randomUUID();
+        ColonyClaimState.ClaimRecord a = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", new BlockPos(0, 64, 0).asLong(), ownerA.toString(), List.of());
+        ColonyClaimState.ClaimRecord b = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", new BlockPos(64, 64, 0).asLong(), ownerB.toString(), List.of());
+        ColonyClaimState overlapping = new ColonyClaimState(Map.of("a", a, "b", b));
+        assertTrue(overlapping.ownerAt("minecraft:overworld", new BlockPos(32, 64, 0)).isEmpty());
+
+        ColonyClaimState nonOverlapping = new ColonyClaimState(Map.of(
+                "a", a,
+                "b", new ColonyClaimState.ClaimRecord("minecraft:overworld",
+                        new BlockPos(256, 64, 0).asLong(), ownerB.toString(), List.of())));
+        assertTrue(nonOverlapping.ownerAt("minecraft:overworld", new BlockPos(0, 64, 0))
+                .filter(ownerA::equals).isPresent());
+    }
+
+    @Test
     void onlyOwnerAndExplicitMembersMayModifyTerritory() {
         UUID owner = UUID.randomUUID();
         UUID member = UUID.randomUUID();
