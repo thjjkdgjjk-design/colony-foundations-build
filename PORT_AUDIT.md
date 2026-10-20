@@ -34,7 +34,7 @@ The exact source tree `ldtteam/minecolonies-schematics@ae86ba500d3172220669657e0
 | `taiga` | 78 |
 | **Total** | **598** |
 
-The CI workflow bundles only 20 files from four style folders (`birch`, `darkoak`, `defaultwooden`, `stone`; citizen house tiers 1–5). Therefore the bundled catalogue is 20/598 files from the pinned upstream inventory and is not a full catalogue. This upstream Git-tree count is not a count of unique buildings or guaranteed-compatible schematics; it only counts filenames with the `.nbt` suffix.
+An earlier CI workflow bundled 20 files from four style folders (`birch`, `darkoak`, `defaultwooden`, `stone`; citizen-house tiers 1–5). Because the pinned revision had no explicit redistribution grant, current public builds no longer fetch or bundle any of these upstream NBT assets. This upstream Git-tree count is not a count of unique buildings or guaranteed-compatible schematics; it only counts filenames with the `.nbt` suffix.
 
 ## Current project layers
 
@@ -44,7 +44,7 @@ The CI workflow bundles only 20 files from four style folders (`birch`, `darkoak
 
 ### Colony Schematics (separate JAR)
 - Separate Fabric mod ID and catalog item.
-- 20 citizen-house NBT assets built into the JAR (4 styles × 5 tiers); a separate user-provided datapack contains 9,515 .blueprint files from 23 architecture styles.
+- Current public JARs do not bundle upstream MineColonies NBT assets due unresolved redistribution permission for the pinned snapshot. The loader can read compatible schematics from installed datapacks; the previously supplied private/user pack is not included in this repository or public JARs.
 - Structurize v1 palette/packed-block decoding, rotation, primary anchor, block-entity and entity NBT paths.
 - 2-corner region scan/save into a portable Blueprint Scroll; stored blueprint can be placed from Creative mode.
 - Server-synchronized, paginated/searchable catalog supports bundled examples and enabled world datapacks under data/colony_schematics/blueprints/.
@@ -170,7 +170,7 @@ CI compilation proves source compatibility with the compile environment only; it
 | Фермер | `CitizenJobController` собирает зрелые пшеницу, морковь, картофель и свёклу в радиусе 8 блоков, подходит к ближайшей культуре, пересаживает на базовое состояние | Только минимальный сбор. Нет управляемых полей, вспашки, выбора культур, полноценной посадки, удобрений, зрелости с учётом запасов семян и складской логистики |
 | Склад/запросы/экономика | Инвентарь хижины и локальный запас материалов в ратуше | Система запросов, курьерская сеть, склад, приоритеты, рецептурные цепочки и экономика не реализованы |
 | UI и локализация | Два отдельных каталога, русские language-файлы и ряд русских статусных сообщений | Переводы основных экранов есть, но полная локализация не подтверждена. Остаются жёстко заданные строки, технические ID, неполные названия построек и английские записи fallback |
-| Каталог схем | CI включает 20 встроенных домов из 4 стилей × 5 уровней; add-on отдельно сканирует включённые datapack-схемы. Репозиторий схем содержит и другие категории/стили | Каталог не является полным. Внешний datapack из 9515 файлов не входит в публичный JAR; его комплектность и лицензия должны проверяться отдельно |
+| Каталог схем | Встроена JSON-схема коттеджа; add-on сканирует включённые datapack-схемы. Upstream snapshot содержит 598 NBT-файлов в 9 стилевых папках, но эти файлы больше не пакуются в публичный JAR до подтверждения лицензии | Полный каталог не реализован. Отдельный пользовательский datapack должен иметь подтверждённые права на использование; в мире также могут отсутствовать зависимые блоки |
 
 ### Исправление текущего этапа
 
@@ -288,3 +288,10 @@ CI compilation proves source compatibility with the compile environment only; it
 - Исправлено условие `resumeSame`: теперь повторный запуск того же активного или приостановленного заказа сохраняет поворот и координаты площадки, даже если препятствие было обнаружено до размещения первого блока.
 - Новая чистая политика `BuildResumeRules` покрыта пятью unit-сценариями: остановка на нулевом прогрессе, активный заказ, заказ с уже накопленным прогрессом, новая не начатая схема и действительно завершённый/сменённый заказ.
 - Этот этап проверяет выбор пути состояния. Внутриигровой тест «препятствие → убрать → возобновить» по-прежнему требуется.
+
+
+## Исключение непроверенных схем из публичных релизов — 2026-10-20
+
+- Повторная проверка upstream показала: закреплённый snapshot `ae86ba500d3172220669657e0102861fa8b7f3be` содержит 598 файлов `.nbt`, но не содержит `LICENSE`; текущий `master` имеет GPL-3.0, однако его Git tree не содержит этих NBT-файлов. Этого недостаточно, чтобы надёжно подтвердить право на распространение именно упакованного snapshot.
+- Удалены CI-шаги скачивания 20 домов и копирования их во второй JAR. Будущие публичные сборки не будут включать эти NBT-ресурсы до подтверждения разрешения. Код загрузки совместимых datapack и встроенный коттедж остаются.
+- Из-за отсутствия инструмента удаления релизов в текущем GitHub-коннекторе исторические CI-релизы, опубликованные до этого коммита, могут оставаться доступными. Их удаление/замена требует отдельного доступа к удалению GitHub Releases; эта работа здесь не подтверждается как выполненная.

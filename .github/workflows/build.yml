@@ -20,35 +20,6 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Fetch pinned MineColonies citizen-house schematics
-        shell: bash
-        run: |
-          set -euo pipefail
-          SCHEMATICS_COMMIT="ae86ba500d3172220669657e0102861fa8b7f3be"
-          STYLES=(birch darkoak defaultwooden stone)
-          for style in "${STYLES[@]}"; do
-            for tier in 1 2 3 4 5; do
-              relative="data/colony_foundations/colony_blueprints/minecolonies/${style}/buildings/citizen/citizen${tier}.nbt"
-              target="src/main/resources/${relative}"
-              mkdir -p "$(dirname "$target")"
-              url="https://raw.githubusercontent.com/ldtteam/minecolonies-schematics/${SCHEMATICS_COMMIT}/${style}/buildings/citizen/citizen${tier}.nbt"
-              curl --fail --location --retry 3 --connect-timeout 20 "$url" --output "$target"
-              test -s "$target"
-              asset_target="src/main/resources/assets/colony_foundations/schematics/minecolonies/${style}/buildings/citizen/citizen${tier}.nbt"
-              mkdir -p "$(dirname "$asset_target")"
-              cp "$target" "$asset_target"
-              echo "Fetched ${relative} ($(wc -c < "$target") bytes)"
-            done
-          done
-
-
-      - name: Copy pinned schematics into the separate add-on
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p colony-schematics-addon/src/main/resources/assets/colony_schematics/schematics
-          cp -R src/main/resources/assets/colony_foundations/schematics/minecolonies colony-schematics-addon/src/main/resources/assets/colony_schematics/schematics/
-
       - name: Set up JDK 22
         uses: actions/setup-java@v4
         with:
@@ -100,7 +71,7 @@ jobs:
             Experimental Minecraft 1.21.5 / Fabric builds. This release contains two separate JARs:
             - Colony Foundations: colony-block/build-queue prototype.
             - Colony Schematics: standalone catalog, scan/save scrolls, schematic placement, block-entity NBT restore, entity restore, and server-datapack blueprint discovery/search.
-            The JAR bundles only 20 small citizen-house schematics. Additional blueprint packs can be installed in the world's datapacks directory under data/colony_schematics/blueprints/.
+            No upstream MineColonies NBT schematic files are bundled while redistribution rights for the pinned revision are being verified. Install a separately licensed blueprint datapack under data/colony_schematics/blueprints/.
             Structurize parity is still incomplete: no full datafixer migration, tag substitution handlers, undo/redo, survival materials/work orders, true ghost block-model rendering, or integration with a real MineColonies colony economy. Rotation and mirroring are implemented in the catalog but still need in-game regression testing. Unknown blocks are replaced with air if the corresponding dependency mod is not ported/installed.
             The full MineColonies profession/economy systems are not included in Colony Foundations yet.
           files: build/release/*.jar

@@ -17,13 +17,13 @@ The build workflow publishes this add-on as its own JAR:
 
 ## Loading the full MineColonies blueprint set
 
-The JAR contains 20 built-in citizen-house examples. The separately delivered `colony-schematics-minecolonies-blueprints-1.21.5.zip` datapack contains 9,515 blueprint files from the MineColonies source archive uploaded for this port. Place the ZIP, without extracting it, in:
+The public JAR does not bundle upstream MineColonies NBT schematics while redistribution rights for the pinned snapshot are being verified. If you have a compatible datapack that you are licensed to use, place the ZIP, without extracting it, in:
 
 `<minecraft>/saves/<world>/datapacks/`
 
 Run `/reload` or re-enter the world. The mod scans enabled server datapacks under `data/colony_schematics/blueprints/` and sends the index to the client catalog. In multiplayer, install the mod on the server and the same datapack on the server, not just on the client.
 
-The pack includes multiple architectural styles and buildings, but this does **not** mean all of the blocks those blueprints reference have been ported. Unsupported blocks are replaced with air. In particular, Domum Ornamentum and the remaining MineColonies dependency chain are not yet complete Fabric ports.
+A separately obtained pack may include multiple architectural styles and buildings, but this does **not** mean all of the blocks those blueprints reference have been ported. Unsupported blocks are replaced with air. In particular, Domum Ornamentum and the remaining MineColonies dependency chain are not yet complete Fabric ports.
 
 ## Known limitations
 
