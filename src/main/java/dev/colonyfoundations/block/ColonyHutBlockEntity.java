@@ -13,6 +13,8 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.world.World;
+import dev.colonyfoundations.worker.CitizenJobController;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.NamedScreenHandlerFactory;
@@ -22,6 +24,8 @@ import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -58,6 +62,64 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     public Optional<UUID> assignedCitizen() {
         return Optional.ofNullable(assignedCitizen);
     }
+
+    public boolean isAssignedWorker(VillagerEntity villager) {
+        return assignedCitizen != null && assignedCitizen.equals(villager.getUuid())
+                && villager.getCommandTags().contains(HUT_WORKER_TAG)
+                && villager.getCommandTags().contains(assignmentTag());
+    }
+
+    /** Server-side work tick. Individual job handlers use bounded searches and never load chunks. */
+    public static void tick(World world, BlockPos pos, BlockState state, ColonyHutBlockEntity hut) {
+        if (world.isClient || !(world instanceof ServerWorld serverWorld)
+                || serverWorld.getTime() % 20L != 0L || !hut.enabled()) return;
+        CitizenJobController.tick(serverWorld, pos, hut);
+    }
+
+    /**
+     * Test capacity for a complete job output before mutating the world. The simulated
+     * inventory prevents harvesting a crop whose drops would be lost to a full hut.
+     */
+    public boolean canStoreItems(List<ItemStack> incoming) {
+        List<ItemStack> simulated = new ArrayList<>(inventory.size());
+        for (ItemStack stack : inventory) simulated.add(stack.copy());
+        for (ItemStack stack : incoming) {
+            if (stack != null && !stack.isEmpty() && !insertInto(simulated, stack.copy())) return false;
+        }
+        return true;
+    }
+
+    public boolean storeItems(List<ItemStack> incoming) {
+        if (!canStoreItems(incoming)) return false;
+        for (ItemStack stack : incoming) {
+            if (stack != null && !stack.isEmpty()) insertInto(inventory, stack.copy());
+        }
+        markDirty();
+        return true;
+    }
+
+    private static boolean insertInto(List<ItemStack> slots, ItemStack incoming) {
+        for (int i = 0; i < slots.size() && !incoming.isEmpty(); i++) {
+            ItemStack existing = slots.get(i);
+            if (!existing.isEmpty() && existing.getItem() == incoming.getItem()
+                    && existing.getCount() < existing.getMaxCount()) {
+                int moved = Math.min(incoming.getCount(), existing.getMaxCount() - existing.getCount());
+                existing.increment(moved);
+                incoming.decrement(moved);
+            }
+        }
+        for (int i = 0; i < slots.size() && !incoming.isEmpty(); i++) {
+            if (slots.get(i).isEmpty()) {
+                int moved = Math.min(incoming.getCount(), incoming.getMaxCount());
+                ItemStack placed = incoming.copy();
+                placed.setCount(moved);
+                slots.set(i, placed);
+                incoming.decrement(moved);
+            }
+        }
+        return incoming.isEmpty();
+    }
+
 
     public void assignCitizen(UUID citizenUuid) {
         if (citizenUuid != null && citizenUuid.equals(assignedCitizen)) return;

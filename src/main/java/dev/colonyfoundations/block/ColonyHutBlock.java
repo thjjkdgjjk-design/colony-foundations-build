@@ -2,10 +2,13 @@ package dev.colonyfoundations.block;
 
 import com.mojang.serialization.MapCodec;
 import dev.colonyfoundations.item.ModItems;
+import dev.colonyfoundations.worker.CitizenJobController;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockWithEntity;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.block.entity.BlockEntityTicker;
+import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -79,6 +82,12 @@ public final class ColonyHutBlock extends BlockWithEntity {
 
         serverPlayer.openHandledScreen(hut);
         return ActionResult.SUCCESS;
+    }
+
+    @Override
+    public <T extends BlockEntity> BlockEntityTicker<T> getTicker(
+            World world, BlockState state, BlockEntityType<T> type) {
+        return BlockWithEntity.validateTicker(type, ModBlockEntities.COLONY_HUT, ColonyHutBlockEntity::tick);
     }
 
     @Override
