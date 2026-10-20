@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "colony_foundations",
+  "version": "${version}",
+  "name": "Colony Foundations (Fabric)",
+  "description": "An experimental colony-building prototype for Minecraft 1.21.5: recruit a villager builder and have them construct a small blueprint-built cottage.",
+  "authors": ["Colony Foundations contributors"],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.colonyfoundations.ColonyFoundations"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "1.21.5",
+    "java": ">=22",
+    "fabric-api": ">=0.119.5+1.21.5"
+  }
+}
