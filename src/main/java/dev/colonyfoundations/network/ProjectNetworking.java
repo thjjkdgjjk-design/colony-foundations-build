@@ -36,6 +36,10 @@ public final class ProjectNetworking {
                     player.getName().getString(), payload.blueprintId());
             return;
         }
-        hall.startProject(payload.blueprintId(), payload.rotation(), player);
+        if (payload.action() == 3) {
+            hall.depositForSelectedProject(payload.blueprintId(), payload.rotation(), player);
+        } else {
+            hall.startProject(payload.blueprintId(), payload.rotation(), player);
+        }
     }
 }
