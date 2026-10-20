@@ -57,6 +57,10 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         return Optional.ofNullable(BLUEPRINTS.get(id));
     }
 
+    public static BlueprintDefinition readNativeNbt(Identifier id, Resource resource) throws IOException {
+        return readStructurizeNbt(id, resource);
+    }
+
     public static List<BlueprintDefinition> all() {
         return BLUEPRINTS.values().stream().sorted(Comparator.comparing(BlueprintDefinition::title)).toList();
     }

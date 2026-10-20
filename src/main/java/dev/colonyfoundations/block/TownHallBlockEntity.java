@@ -6,6 +6,7 @@ import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.util.BlockRotation;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -116,8 +117,9 @@ public final class TownHallBlockEntity extends BlockEntity {
         CottageBlueprint.Placement placement = plan.get(hall.progress);
         BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation));
         BlockState oldState = serverWorld.getBlockState(target);
+        BlockState rotatedState = rotateState(placement.state(), hall.rotation);
         if ((oldState.isAir() || oldState.isReplaceable()) && oldState.getFluidState().isEmpty()) {
-            serverWorld.setBlockState(target, placement.state(), Block.NOTIFY_ALL);
+            serverWorld.setBlockState(target, rotatedState, Block.NOTIFY_ALL);
         } else {
             hall.skippedObstructions++;
         }
@@ -129,10 +131,19 @@ public final class TownHallBlockEntity extends BlockEntity {
     private static BlockPos rotate(BlockPos source, BlueprintDefinition definition, int turns) {
         int x = source.getX(), y = source.getY(), z = source.getZ();
         return switch (Math.floorMod(turns, 4)) {
-            case 1 -> new BlockPos(z, y, definition.sizeX() - 1 - x);
+            case 1 -> new BlockPos(definition.sizeZ() - 1 - z, y, x);
             case 2 -> new BlockPos(definition.sizeX() - 1 - x, y, definition.sizeZ() - 1 - z);
-            case 3 -> new BlockPos(definition.sizeZ() - 1 - z, y, x);
+            case 3 -> new BlockPos(z, y, definition.sizeX() - 1 - x);
             default -> source;
+        };
+    }
+
+    private static BlockState rotateState(BlockState state, int turns) {
+        return switch (Math.floorMod(turns, 4)) {
+            case 1 -> state.rotate(BlockRotation.CLOCKWISE_90);
+            case 2 -> state.rotate(BlockRotation.CLOCKWISE_180);
+            case 3 -> state.rotate(BlockRotation.COUNTERCLOCKWISE_90);
+            default -> state;
         };
     }
 

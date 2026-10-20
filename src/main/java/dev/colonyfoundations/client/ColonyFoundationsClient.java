@@ -1,14 +1,48 @@
 package dev.colonyfoundations.client;
 
+import dev.colonyfoundations.ColonyFoundations;
+import dev.colonyfoundations.blueprint.BlueprintDefinition;
+import dev.colonyfoundations.blueprint.BlueprintRegistry;
+import dev.colonyfoundations.blueprint.CottageBlueprint;
 import net.fabricmc.api.ClientModInitializer;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.resource.Resource;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
 public final class ColonyFoundationsClient implements ClientModInitializer {
+    private static final Map<Identifier, BlueprintDefinition> PREVIEW_CACHE = new HashMap<>();
+
     @Override
     public void onInitializeClient() { }
 
     public static void openTownHall(BlockPos pos) {
         MinecraftClient.getInstance().setScreen(new BlueprintCatalogScreen(pos));
+    }
+
+    public static BlueprintDefinition preview(Identifier blueprintId) {
+        if (blueprintId.getPath().equals("cottage")) return CottageBlueprint.defaultDefinition();
+        BlueprintDefinition cached = PREVIEW_CACHE.get(blueprintId);
+        if (cached != null) return cached;
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        Identifier assetId = Identifier.of(ColonyFoundations.MOD_ID,
+                "schematics/" + blueprintId.getPath() + ".nbt");
+        Optional<Resource> resource = client.getResourceManager().getResource(assetId);
+        if (resource.isEmpty()) return null;
+
+        try {
+            BlueprintDefinition loaded = BlueprintRegistry.readNativeNbt(blueprintId, resource.get());
+            PREVIEW_CACHE.put(blueprintId, loaded);
+            return loaded;
+        } catch (IOException | RuntimeException exception) {
+            ColonyFoundations.LOGGER.warn("Could not create preview for {}: {}", blueprintId, exception.getMessage());
+            return null;
+        }
     }
 }

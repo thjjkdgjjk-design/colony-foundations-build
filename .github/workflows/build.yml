@@ -33,6 +33,9 @@ jobs:
               url="https://raw.githubusercontent.com/ldtteam/minecolonies-schematics/${SCHEMATICS_COMMIT}/${style}/buildings/citizen/citizen${tier}.nbt"
               curl --fail --location --retry 3 --connect-timeout 20 "$url" --output "$target"
               test -s "$target"
+              asset_target="src/main/resources/assets/colony_foundations/schematics/minecolonies/${style}/buildings/citizen/citizen${tier}.nbt"
+              mkdir -p "$(dirname "$asset_target")"
+              cp "$target" "$asset_target"
               echo "Fetched ${relative} ($(wc -c < "$target") bytes)"
             done
           done
