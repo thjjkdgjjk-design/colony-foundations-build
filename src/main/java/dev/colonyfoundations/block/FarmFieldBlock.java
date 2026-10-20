@@ -8,7 +8,6 @@ import net.minecraft.block.BlockWithEntity;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -64,22 +63,13 @@ public final class FarmFieldBlock extends BlockWithEntity {
             return ActionResult.SUCCESS;
         }
 
-        if (serverPlayer.isSneaking() && held.isOf(Items.BONE_MEAL)) {
-            boolean enabled = field.toggleFertilizer();
-            serverPlayer.sendMessage(Text.translatable(enabled
-                    ? "message.colony_foundations.field_fertilizer_enabled"
-                    : "message.colony_foundations.field_fertilizer_disabled"), true);
-            return ActionResult.SUCCESS;
-        }
-
         String cropName = "не выбрана";
         Identifier cropId = Identifier.tryParse(field.cropBlockId());
         if (field.configured() && cropId != null && Registries.BLOCK.containsId(cropId)) {
             cropName = Text.translatable(Registries.BLOCK.get(cropId).getTranslationKey()).getString();
         }
         serverPlayer.sendMessage(Text.translatable(
-                "message.colony_foundations.field_status", cropName, field.fieldRadius(),
-                field.fertilizerEnabled() ? "включено" : "выключено"), true);
+                "message.colony_foundations.field_status", cropName, field.fieldRadius()), true);
         return ActionResult.SUCCESS;
     }
 

@@ -12,6 +12,7 @@ import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
@@ -52,6 +53,15 @@ public final class ColonyHutBlock extends BlockWithEntity {
                 || !(world instanceof ServerWorld serverWorld)
                 || !(world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut)) {
             return ActionResult.PASS;
+        }
+
+        if (serverPlayer.isSneaking() && serverPlayer.getMainHandStack().isOf(Items.BONE_MEAL)
+                && hut.hutId().equals("hut_farmer")) {
+            boolean enabled = hut.toggleRequestFertilizer();
+            serverPlayer.sendMessage(Text.translatable(enabled
+                    ? "message.colony_foundations.farmer_fertilizer_enabled"
+                    : "message.colony_foundations.farmer_fertilizer_disabled"), true);
+            return ActionResult.SUCCESS;
         }
 
         if (assignmentMode) {

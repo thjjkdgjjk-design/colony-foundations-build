@@ -11,7 +11,7 @@
   "message.colony_foundations.territory_interaction_protected": "This action is not allowed inside another colony's protected territory.",
   "message.colony_foundations.field_crop_set": "This field will grow: %s.",
   "message.colony_foundations.field_radius_set": "Field radius: %s blocks. Area: %s×%s.",
-  "message.colony_foundations.field_fertilizer_enabled": "Bone meal support is enabled for this field.",
-  "message.colony_foundations.field_fertilizer_disabled": "Fertilizer support is disabled for this field.",
-  "message.colony_foundations.field_status": "Crop: %s · radius: %s · fertilizer: %s."
+  "message.colony_foundations.farmer_fertilizer_enabled": "Farmer fertilizer requests are enabled.",
+  "message.colony_foundations.farmer_fertilizer_disabled": "Farmer fertilizer requests are disabled.",
+  "message.colony_foundations.field_status": "Crop: %s · radius: %s."
 }

@@ -11,7 +11,6 @@ import net.minecraft.util.math.BlockPos;
 public final class FarmFieldBlockEntity extends BlockEntity {
     private String cropBlockId = "";
     private int fieldRadius = 3;
-    private boolean fertilizerEnabled;
     private long lastActionDay = Long.MIN_VALUE;
 
     public FarmFieldBlockEntity(BlockPos pos, BlockState state) {
@@ -40,14 +39,6 @@ public final class FarmFieldBlockEntity extends BlockEntity {
         return fieldRadius;
     }
 
-    public boolean fertilizerEnabled() { return fertilizerEnabled; }
-
-    public boolean toggleFertilizer() {
-        fertilizerEnabled = !fertilizerEnabled;
-        markDirty();
-        return fertilizerEnabled;
-    }
-
     public boolean canActOnDay(long currentDay) {
         return FarmerJobRules.canActOnDay(lastActionDay, currentDay);
     }
@@ -63,7 +54,6 @@ public final class FarmFieldBlockEntity extends BlockEntity {
         super.writeNbt(nbt, registries);
         nbt.putString("CropBlockId", cropBlockId);
         nbt.putInt("FieldRadius", fieldRadius);
-        nbt.putBoolean("FertilizerEnabled", fertilizerEnabled);
         nbt.putLong("LastActionDay", lastActionDay);
     }
 
@@ -73,7 +63,6 @@ public final class FarmFieldBlockEntity extends BlockEntity {
         String crop = nbt.getString("CropBlockId").orElse("");
         cropBlockId = FarmerJobRules.cropForBlockId(crop).isPresent() ? crop : "";
         fieldRadius = FarmerJobRules.clampFieldRadius(nbt.getInt("FieldRadius").orElse(3));
-        fertilizerEnabled = nbt.getBoolean("FertilizerEnabled").orElse(false);
         lastActionDay = nbt.getLong("LastActionDay").orElse(Long.MIN_VALUE);
     }
 }

@@ -47,6 +47,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     private int buildingLevel = 1;
     private UUID assignedCitizen;
     private boolean enabled = true;
+    private boolean requestFertilizer;
     private String courierRequestId = "";
     private String courierStage = "";
     private String courierTransferId = "";
@@ -454,6 +455,16 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         markDirty();
     }
 
+    public boolean requestFertilizer() {
+        return requestFertilizer;
+    }
+
+    public boolean toggleRequestFertilizer() {
+        requestFertilizer = !requestFertilizer;
+        markDirty();
+        return requestFertilizer;
+    }
+
     public String hutId() {
         return Registries.BLOCK.getId(getCachedState().getBlock()).getPath();
     }
@@ -530,6 +541,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         super.writeNbt(nbt, registries);
         nbt.putInt("BuildingLevel", buildingLevel);
         nbt.putBoolean("Enabled", enabled);
+        nbt.putBoolean("RequestFertilizer", requestFertilizer);
         if (assignedCitizen != null) nbt.putString("AssignedCitizen", assignedCitizen.toString());
         nbt.putString("CourierRequestId", courierRequestId);
         nbt.putString("CourierStage", courierStage);
@@ -557,6 +569,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         super.readNbt(nbt, registries);
         buildingLevel = Math.max(1, Math.min(5, nbt.getInt("BuildingLevel").orElse(1)));
         enabled = nbt.getBoolean("Enabled").orElse(true);
+        requestFertilizer = nbt.getBoolean("RequestFertilizer").orElse(false);
         String rawUuid = nbt.getString("AssignedCitizen").orElse("");
         try {
             assignedCitizen = rawUuid.isBlank() ? null : UUID.fromString(rawUuid);

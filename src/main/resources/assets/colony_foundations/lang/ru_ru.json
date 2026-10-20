@@ -11,7 +11,7 @@
   "message.colony_foundations.territory_interaction_protected": "Это действие запрещено на защищённой территории чужой колонии.",
   "message.colony_foundations.field_crop_set": "Поле будет выращивать культуру: %s.",
   "message.colony_foundations.field_radius_set": "Радиус поля: %s блок. Площадь: %s×%s.",
-  "message.colony_foundations.field_fertilizer_enabled": "Использование костной муки разрешено для этого поля.",
-  "message.colony_foundations.field_fertilizer_disabled": "Использование удобрения для этого поля отключено.",
-  "message.colony_foundations.field_status": "Культура: %s · радиус: %s · удобрение: %s."
+  "message.colony_foundations.farmer_fertilizer_enabled": "Запрос удобрения для фермера включён.",
+  "message.colony_foundations.farmer_fertilizer_disabled": "Запрос удобрения для фермера выключен.",
+  "message.colony_foundations.field_status": "Культура: %s · радиус: %s."
 }

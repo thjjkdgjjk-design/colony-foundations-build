@@ -132,7 +132,7 @@ public final class CitizenJobController {
         }
 
         // Fertilizer runs as a distinct field action and consumes one bone meal per growth step.
-        if (field.fertilizerEnabled() && hut.hasItem("minecraft:bone_meal")) {
+        if (hut.requestFertilizer() && hut.hasItem("minecraft:bone_meal")) {
             for (int x = -radius; x <= radius; x++) {
                 for (int z = -radius; z <= radius; z++) {
                     BlockPos cropPos = fieldPos.add(x, 0, z);
