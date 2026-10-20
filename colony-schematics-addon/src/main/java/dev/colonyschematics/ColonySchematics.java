@@ -5,6 +5,8 @@ import dev.colonyschematics.blueprint.SchematicScanner;
 import dev.colonyschematics.network.PlaceStoredBlueprintPayload;
 import dev.colonyschematics.network.SelectSchematicCornerPayload;
 import dev.colonyschematics.network.PlaceSchematicPayload;
+import dev.colonyschematics.network.RequestSchematicCatalogPayload;
+import dev.colonyschematics.network.SchematicCatalogPayload;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
@@ -72,15 +74,43 @@ public final class ColonySchematics implements ModInitializer {
             entries.add(BLUEPRINT_SCROLL);
         });
         PayloadTypeRegistry.playC2S().register(PlaceSchematicPayload.ID, PlaceSchematicPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(RequestSchematicCatalogPayload.ID, RequestSchematicCatalogPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(SchematicCatalogPayload.ID, SchematicCatalogPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(SelectSchematicCornerPayload.ID, SelectSchematicCornerPayload.CODEC);
         PayloadTypeRegistry.playC2S().register(PlaceStoredBlueprintPayload.ID, PlaceStoredBlueprintPayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(PlaceSchematicPayload.ID, (payload, context) ->
                 context.server().execute(() -> placeSchematic(context.player(), payload)));
+        ServerPlayNetworking.registerGlobalReceiver(RequestSchematicCatalogPayload.ID, (payload, context) ->
+                context.server().execute(() -> sendCatalog(context.player(), payload)));
         ServerPlayNetworking.registerGlobalReceiver(SelectSchematicCornerPayload.ID, (payload, context) ->
                 context.server().execute(() -> SchematicScanner.selectCorner(context.player(), payload.position())));
         ServerPlayNetworking.registerGlobalReceiver(PlaceStoredBlueprintPayload.ID, (payload, context) ->
                 context.server().execute(() -> placeStoredBlueprint(context.player(), payload)));
         LOGGER.info("Colony Schematics initialized with catalog, scan/save, and portable blueprints.");
+    }
+
+
+    private static void sendCatalog(ServerPlayerEntity player, RequestSchematicCatalogPayload request) {
+        String query = request.query() == null ? "" : request.query().strip().toLowerCase(java.util.Locale.ROOT);
+        var all = SchematicLoader.available(player.getServerWorld().getServer().getResourceManager());
+        var filtered = all.stream()
+                .filter(entry -> query.isBlank()
+                        || entry.title().toLowerCase(java.util.Locale.ROOT).contains(query)
+                        || entry.id().toString().toLowerCase(java.util.Locale.ROOT).contains(query))
+                .toList();
+
+        int total = filtered.size();
+        int totalPages = Math.max(1, (total + SchematicCatalogPayload.PAGE_SIZE - 1)
+                / SchematicCatalogPayload.PAGE_SIZE);
+        int page = Math.max(0, Math.min(request.page(), totalPages - 1));
+        int start = page * SchematicCatalogPayload.PAGE_SIZE;
+        int end = Math.min(total, start + SchematicCatalogPayload.PAGE_SIZE);
+        var entries = new java.util.ArrayList<SchematicCatalogPayload.Entry>(end - start);
+        for (var item : filtered.subList(start, end)) {
+            entries.add(new SchematicCatalogPayload.Entry(item.id(), item.title()));
+        }
+
+        ServerPlayNetworking.send(player, new SchematicCatalogPayload(page, totalPages, total, entries));
     }
 
     private static void placeSchematic(ServerPlayerEntity player, PlaceSchematicPayload payload) {
@@ -90,7 +120,8 @@ public final class ColonySchematics implements ModInitializer {
         }
 
         try {
-            SchematicLoader.Schematic schematic = SchematicLoader.load(payload.schematicId());
+            SchematicLoader.Schematic schematic = SchematicLoader.load(payload.schematicId(),
+                    player.getServerWorld().getServer().getResourceManager());
             placeLoadedSchematic(player, schematic, payload.rotation(), payload.schematicId());
         } catch (Exception exception) {
             LOGGER.warn("Unable to place schematic {}: {}", payload.schematicId(),
