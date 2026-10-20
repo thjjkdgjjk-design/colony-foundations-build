@@ -35,7 +35,7 @@ public final class ColonyFoundations implements ModInitializer {
         ItemGroupEvents.modifyEntriesEvent(ItemGroups.FUNCTIONAL).register(entries -> {
             entries.add(ModBlocks.TOWN_HALL);
             entries.add(ModItems.BUILDER_CONTRACT);
-            entries.addAll(ModHuts.items());
+            ModHuts.items().forEach(entries::add);
         });
 
         LOGGER.info("Colony Foundations initialized: Town Hall, {} hut/utility blocks, construction queue and Structurize NBT import.", ModHuts.IDS.size());
