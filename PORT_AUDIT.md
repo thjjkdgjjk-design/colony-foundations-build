@@ -25,10 +25,11 @@ These counts are source scans, not an estimate of the complete number of require
 
 ### Colony Schematics (separate JAR)
 - Separate Fabric mod ID and catalog item.
-- 20 citizen-house NBT assets (4 styles × 5 tiers).
-- Structurize v1 palette/packed-block decoding and block-state rotation.
-- Latest port step adds reading NBT for block entities/entities and handles the Structurize primary anchor during placement. This step must pass CI and be tested in-game before being treated as verified.
-- Not yet a complete Structurize implementation: no scan/save flow, visual block models for ghost preview, mirroring, undo/redo, substitution handlers, data fixing, requirements/material accounting, or build-work-order integration.
+- 20 citizen-house NBT assets built into the JAR (4 styles × 5 tiers); a separate user-provided datapack contains 9,515 .blueprint files from 23 architecture styles.
+- Structurize v1 palette/packed-block decoding, rotation, primary anchor, block-entity and entity NBT paths.
+- 2-corner region scan/save into a portable Blueprint Scroll; stored blueprint can be placed from Creative mode.
+- Server-synchronized, paginated/searchable catalog supports bundled examples and enabled world datapacks under data/colony_schematics/blueprints/.
+- Newly changed code is still pending CI and in-game validation. Not yet a complete Structurize implementation: data fixing, special substitution/tag handlers, mirroring, undo/redo, true block-model ghost preview, survival requirement/material accounting, and staged build-work-order integration remain unimplemented.
 
 ## Missing MineColonies feature groups
 
@@ -57,6 +58,10 @@ These counts are source scans, not an estimate of the complete number of require
 
 The MineColonies Java source uses GPL-3.0, while its own resources directory has a separate assets/minecolonies/LICENSE stating “All Rights Reserved”. The public schematic repository's README documents its intended use for MineColonies but does not itself establish a broad redistribution grant in the revision reviewed. Do not treat source-code GPL as a blanket license for textures, sounds, GUI art, models or all schematic assets. Replacement art or an explicit asset license/permission is required before claiming that the entire original visual content has been ported and redistributed.
 
+## Current incremental delivery (2026-10-20)
+
+The separate colony-schematics-addon is the active first workstream: making the Structurize schematic format usable on Fabric and enabling the full blueprint tree through a server datapack. The datapack output stays separate from the public JAR because the original MineColonies resource tree carries a separate “All Rights Reserved” notice; only the user who supplied the archive is receiving this generated pack here. Source-code GPL terms are not assumed to override that separate resource notice.
+
 ## Verification statement
 
-CI compilation proves source compatibility with the compile environment only; it does not prove behavior in Minecraft. The complete MineColonies feature set is not yet ported.
+CI compilation proves source compatibility with the compile environment only; it does not prove behavior in Minecraft. The complete MineColonies feature set is not yet ported. Build success and gameplay tests must be tracked separately.
