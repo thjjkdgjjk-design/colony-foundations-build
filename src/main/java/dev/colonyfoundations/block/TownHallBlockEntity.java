@@ -145,10 +145,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     @Override
     protected void readNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
         super.readNbt(nbt, registries);
-        projectActive = nbt.getBoolean("ProjectActive");
-        projectComplete = nbt.getBoolean("ProjectComplete");
-        progress = Math.max(0, nbt.getInt("Progress"));
-        skippedObstructions = Math.max(0, nbt.getInt("SkippedObstructions"));
+        projectActive = nbt.getBoolean("ProjectActive").orElse(false);
+        projectComplete = nbt.getBoolean("ProjectComplete").orElse(false);
+        progress = Math.max(0, nbt.getInt("Progress").orElse(0));
+        skippedObstructions = Math.max(0, nbt.getInt("SkippedObstructions").orElse(0));
         int max = CottageBlueprint.cottage().size();
         progress = Math.min(progress, max);
         if (progress >= max) {
