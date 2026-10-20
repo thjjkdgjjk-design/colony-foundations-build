@@ -2,13 +2,14 @@
   "schemaVersion": 1,
   "id": "colony_foundations",
   "version": "${version}",
-  "name": "Colony Foundations (Fabric)",
-  "description": "An experimental colony-building prototype for Minecraft 1.21.5 with data-pack driven blueprints and a villager builder.",
-  "authors": ["Colony Foundations contributors"],
-  "license": "MIT",
+  "name": "Colony Foundations",
+  "description": "A Fabric colony-building prototype with an in-game blueprint catalog and Structurize NBT import support.",
+  "authors": ["Colony Foundations contributors", "LDTTeam — bundled MineColonies schematic assets"],
+  "license": "GPL-3.0-only",
   "environment": "*",
   "entrypoints": {
-    "main": ["dev.colonyfoundations.ColonyFoundations"]
+    "main": ["dev.colonyfoundations.ColonyFoundations"],
+    "client": ["dev.colonyfoundations.client.ColonyFoundationsClient"]
   },
   "depends": {
     "fabricloader": ">=0.16.14",

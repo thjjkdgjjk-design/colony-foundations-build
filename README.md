@@ -1,38 +1,19 @@
-# Colony Foundations — Fabric 1.21.5
+# Colony Foundations — Minecraft 1.21.5 Fabric
 
-This repository contains an experimental, clean-room colony-building prototype for Minecraft 1.21.5, targeting Fabric and Java 22.
+An experimental colony-building mod with a UI-driven blueprint catalog and an incremental villager builder.
 
-## Current prototype features
-- A craftable Town Hall block.
-- A Builder Contract that recruits a vanilla villager as a builder.
-- A data-pack driven blueprint loader, including block-state properties.
-- A starter cottage blueprint shipped as JSON, plus an in-code fallback if the data file is missing or invalid.
-- A persistent build order that places blocks incrementally near the Town Hall.
+## Features in this build
+- Right-click the Town Hall to open the in-game build catalog; no commands are required.
+- Includes a starter cottage and 20 citizen-house schematics from four MineColonies styles (birch, dark oak, default wooden, stone), tiers 1–5.
+- Rotate the selected schematic by 0°, 90°, 180°, or 270° before ordering construction.
+- Project selection, rotation, pause state, and progress are persisted in the Town Hall block entity.
+- A Builder Contract recruits an ordinary villager as the construction worker.
+- Loads both Colony Foundations JSON files and compressed Structurize v1 NBT palettes/block arrays.
 
-## Blueprint data format
+Official schematic assets are fetched from ldtteam/minecolonies-schematics at a pinned commit and bundled into the release JAR. See THIRD_PARTY_NOTICES.md for attribution and licensing. Import is intentionally restricted to block states: tile entities, entities, special Structurize substitution blocks, and any executable metadata are not applied. Unknown modded blocks are replaced by air. Air cells in the source blueprint do not erase existing terrain.
 
-Put a blueprint at data/<namespace>/colony_blueprints/<name>.json. Its identifier is <namespace>:<name>. Example:
-
-    {
-      "format": 1,
-      "blocks": [
-        { "pos": [0, 0, 0], "block": "minecraft:oak_planks" },
-        {
-          "pos": [1, 0, 0],
-          "block": "minecraft:oak_stairs",
-          "properties": { "facing": "east", "half": "bottom", "shape": "straight", "waterlogged": "false" }
-        }
-      ]
-    }
-
-Positions are relative to the blueprint's anchor. The loader currently accepts up to 8,192 blocks and coordinates between -128 and +128. Invalid blueprints are skipped, and the built-in starter cottage remains available as a fallback. Data-pack changes can be picked up by running /reload.
-
-This is an original, small blueprint subsystem designed for Colony Foundations. It is not the official Structurize mod, does not read Structurize's native blueprint files, and is not a complete MineColonies port.
+## Important limitations
+This is not yet a complete MineColonies or Structurize port. Full profession AI, economy/storage, material delivery, building upgrade workflow, all building styles and structure types, blueprint editor, and the full ghost preview renderer are not implemented. The current UI and scheme placement are a foundation, not a claim of feature parity. Test in a disposable world.
 
 ## Build
-
-GitHub Actions builds the project with JDK 22 and Gradle. The resulting JAR is attached to a GitHub prerelease for each successful build.
-
-Target: Minecraft 1.21.5 + Fabric Loader + Fabric API + Java 22. The mod emits Java 21 bytecode for Minecraft compatibility.
-
-Please test on a disposable world first and report the relevant latest.log if a crash occurs.
+GitHub Actions fetches the pinned NBT assets, then builds with JDK 22 and Gradle 8.12. If building locally, download the same assets using the instructions in .github/workflows/build.yml before running gradle clean build.
