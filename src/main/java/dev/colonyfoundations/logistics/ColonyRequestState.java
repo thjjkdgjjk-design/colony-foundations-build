@@ -54,9 +54,21 @@ public final class ColonyRequestState extends PersistentState {
     public ColonyRequestState() { }
 
     ColonyRequestState(Map<String, RequestRecord> savedRequests) {
-        if (savedRequests != null) requests.putAll(savedRequests);
-        requests.entrySet().removeIf(entry -> !entry.getValue().isValid()
-                || !entry.getKey().equals(entry.getValue().requestId()));
+        boolean repaired = false;
+        if (savedRequests != null) {
+            for (Map.Entry<String, RequestRecord> entry : savedRequests.entrySet()) {
+                RequestRecord record = entry.getValue();
+                if (record == null || !entry.getKey().equals(record.requestId()) || !record.isValid()) {
+                    repaired = true;
+                    continue;
+                }
+                RequestRecord recovered = record.reconcileAfterLoad();
+                requests.put(entry.getKey(), recovered);
+                repaired |= !recovered.equals(record);
+            }
+        }
+        // Persist repairs so impossible states are not rediscovered on every restart.
+        if (repaired) markDirty();
     }
 
     public static ColonyRequestState get(ServerWorld world) {
@@ -197,7 +209,6 @@ public final class ColonyRequestState extends PersistentState {
             itemId = itemId == null ? "" : itemId;
             status = status == null ? "" : status;
             courierUuid = courierUuid == null ? "" : courierUuid;
-            priority = Math.max(0, Math.min(10, priority));
         }
 
         public BlockPos target() { return BlockPos.fromLong(targetPosition); }
@@ -220,14 +231,42 @@ public final class ColonyRequestState extends PersistentState {
                     value.courierUuid(), createdAt, now);
         }
 
+        /** Leave courier metadata for repair so an orphaned claim can be safely released. */
         private boolean isValid() {
             return isValidUuid(requestId) && isValidUuid(colonyOwnerUuid)
                     && Identifier.tryParse(dimension) != null && Identifier.tryParse(itemId) != null
                     && requestedCount > 0 && requestedCount <= MAX_REQUEST_AMOUNT
                     && deliveredCount >= 0 && deliveredCount <= requestedCount
                     && priority >= 0 && priority <= 10
-                    && ColonyRequestRules.Status.parse(status).isPresent()
-                    && (courierUuid.isBlank() || isValidUuid(courierUuid));
+                    && ColonyRequestRules.Status.parse(status).isPresent();
+        }
+
+        private RequestRecord reconcileAfterLoad() {
+            ColonyRequestRules.Status loaded = ColonyRequestRules.Status.parse(status).orElseThrow();
+            ColonyRequestRules.Status repairedStatus = loaded;
+            String repairedCourier = courierUuid;
+
+            if (loaded == ColonyRequestRules.Status.DELIVERED && deliveredCount < requestedCount) {
+                repairedStatus = ColonyRequestRules.Status.OPEN;
+            } else if ((loaded == ColonyRequestRules.Status.OPEN
+                    || loaded == ColonyRequestRules.Status.RESERVED
+                    || loaded == ColonyRequestRules.Status.IN_TRANSIT)
+                    && deliveredCount == requestedCount) {
+                repairedStatus = ColonyRequestRules.Status.DELIVERED;
+            }
+
+            if ((repairedStatus == ColonyRequestRules.Status.RESERVED
+                    || repairedStatus == ColonyRequestRules.Status.IN_TRANSIT)
+                    && !isValidUuid(repairedCourier)) {
+                repairedStatus = ColonyRequestRules.Status.OPEN;
+            }
+            if (repairedStatus != ColonyRequestRules.Status.RESERVED
+                    && repairedStatus != ColonyRequestRules.Status.IN_TRANSIT) {
+                repairedCourier = "";
+            }
+            return new RequestRecord(requestId, colonyOwnerUuid, dimension, targetPosition, itemId,
+                    requestedCount, deliveredCount, priority, repairedStatus.id(), repairedCourier,
+                    createdAt, updatedAt);
         }
 
         private static boolean isValidUuid(String raw) {
