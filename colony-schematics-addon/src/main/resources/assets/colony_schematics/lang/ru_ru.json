@@ -3,5 +3,7 @@
   "screen.colony_schematics.catalog": "Каталог Colony Schematics",
   "message.colony_schematics.creative_only": "Размещение чертежей доступно только в творческом режиме.",
   "message.colony_schematics.placed": "Размещено блоков: %s. Размер схемы: %sx%sx%s.",
+  "message.colony_schematics.placement_details": "Восстановлено блоков с данными: %s, сущностей: %s; пропущено позиций: %s.",
+  "message.colony_schematics.required_mods": "Схема указывает необходимые моды: %s. Отсутствующие блоки могут заменяться воздухом.",
   "message.colony_schematics.failed": "Не удалось прочитать или разместить схему. Подробности в журнале."
 }
