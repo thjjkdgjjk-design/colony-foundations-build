@@ -98,10 +98,11 @@ jobs:
           draft: false
           body: |
             Experimental Minecraft 1.21.5 / Fabric builds. This release contains two separate JARs:
-            - Colony Foundations: the colony-building prototype.
-            - Colony Schematics: a separate schematic catalog/creative-mode placement tool.
-            Both include 20 citizen-house schematics from ldtteam/minecolonies-schematics (GPL-3.0-only), pinned at ae86ba500d3172220669657e0102861fa8b7f3be.
-            Colony Schematics places block states only; block entities, inventories, entities and full Structurize behavior are not implemented. The full MineColonies profession/economy systems are not included.
+            - Colony Foundations: colony-block/build-queue prototype.
+            - Colony Schematics: standalone catalog, scan/save scrolls, schematic placement, block-entity NBT restore, entity restore, and server-datapack blueprint discovery/search.
+            The JAR bundles only 20 small citizen-house schematics. Additional blueprint packs can be installed in the world's datapacks directory under data/colony_schematics/blueprints/.
+            Structurize parity is still incomplete: no full datafixer migration, tag substitution handlers, mirroring, undo/redo, survival materials/work orders, ghost block-model rendering, or integration with a real MineColonies colony economy. Unknown blocks are replaced with air if the corresponding dependency mod is not ported/installed.
+            The full MineColonies profession/economy systems are not included in Colony Foundations yet.
           files: build/release/*.jar
 
       - name: Report build result to the build-trigger issue
