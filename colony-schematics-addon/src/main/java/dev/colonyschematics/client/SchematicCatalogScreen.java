@@ -92,7 +92,7 @@ public final class SchematicCatalogScreen extends Screen {
         }
         entries = List.copyOf(new ArrayList<>(payload.entries()));
         totalPages = Math.max(1, payload.totalPages());
-        totalEntries = payload.totalPages() <= 1 ? payload.entries().size() : payload.totalPages() * SchematicCatalogPayload.PAGE_SIZE;
+        totalEntries = Math.max(0, payload.totalEntries());
         if (selected >= entries.size()) selected = Math.max(0, entries.size() - 1);
         status = entries.isEmpty()
                 ? "No blueprints match this search. Backspace clears the search."
