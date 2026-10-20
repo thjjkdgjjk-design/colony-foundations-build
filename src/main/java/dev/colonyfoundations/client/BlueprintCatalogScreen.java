@@ -4,6 +4,7 @@ import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
 import dev.colonyfoundations.network.RequestProjectStatusPayload;
 import dev.colonyfoundations.network.SetProjectPayload;
+import net.minecraft.block.BlockState;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
