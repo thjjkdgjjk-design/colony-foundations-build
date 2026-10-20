@@ -75,3 +75,10 @@ The separate colony-schematics-addon is the active first workstream: making the 
 ## Verification statement
 
 CI compilation proves source compatibility with the compile environment only; it does not prove behavior in Minecraft. The complete MineColonies feature set is not yet ported. Build success and gameplay tests must be tracked separately.
+
+
+## Follow-up UI/state correction — 2026-10-20
+
+- Fixed Town Hall status formatting so the server sends actual line breaks instead of the literal characters \\ and `n`; this lets the existing client status renderer split the text correctly.
+- Fixed the pause/resume guard so a build stopped by a placement/path issue at progress 0 can be resumed after the player addresses the issue. Previously the UI's pause button rejected that retry as if no project had been selected.
+- Validation target: both Gradle projects compile and the schematic transform unit tests run in CI. Town Hall behavior still needs client/server in-game validation.

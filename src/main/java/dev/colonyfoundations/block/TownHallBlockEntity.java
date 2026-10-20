@@ -272,11 +272,11 @@ public final class TownHallBlockEntity extends BlockEntity {
                 .collect(java.util.stream.Collectors.joining(", "));
         if (stock.isBlank()) stock = "пусто";
         if (stock.length() > 70) stock = stock.substring(0, 67) + "...";
-        return "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\\nВладелец: "
+        return "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\nВладелец: "
                 + (ownerName.isBlank() ? "не назначен" : ownerName)
-                + "\\n" + state + "\\nПрогресс: " + Math.min(progress, total) + "/" + total
-                + "\\nСклад: " + stock
-                + (projectIssue.isBlank() ? "" : "\\nПричина: " + projectIssue);
+                + "\n" + state + "\nПрогресс: " + Math.min(progress, total) + "/" + total
+                + "\nСклад: " + stock
+                + (projectIssue.isBlank() ? "" : "\nПричина: " + projectIssue);
     }
 
     public void togglePause(PlayerEntity player) {
@@ -284,7 +284,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             player.sendMessage(Text.literal("[Колония] Проект завершён. Выбери чертёж и начни новый заказ."), true);
             return;
         }
-        if (!projectActive && progress == 0) {
+        if (!projectActive && progress == 0 && projectIssue.isBlank()) {
             player.sendMessage(Text.literal("[Колония] Сначала выбери чертёж и нажми «Начать строительство»."), true);
             return;
         }
