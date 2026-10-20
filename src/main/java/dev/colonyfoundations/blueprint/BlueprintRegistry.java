@@ -115,8 +115,10 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
             if (!entry.has("block")) throw new IllegalArgumentException("each block needs a namespaced block identifier");
             Identifier blockId = Identifier.tryParse(entry.get("block").getAsString());
             if (blockId == null) throw new IllegalArgumentException("invalid block identifier: " + entry.get("block"));
-            Block block = Registries.BLOCK.getOrEmpty(blockId)
-                    .orElseThrow(() -> new IllegalArgumentException("unknown block: " + blockId));
+            if (!Registries.BLOCK.containsId(blockId)) {
+                throw new IllegalArgumentException("unknown block: " + blockId);
+            }
+            Block block = Registries.BLOCK.get(blockId);
             BlockState state = block.getDefaultState();
 
             if (entry.has("properties")) {
