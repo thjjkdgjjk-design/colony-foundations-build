@@ -1,9 +1,16 @@
 {
   "item.colony_schematics.schematic_tool": "Инструмент чертежей",
+  "item.colony_schematics.blueprint_scroll": "Свиток чертежа",
   "screen.colony_schematics.catalog": "Каталог Colony Schematics",
   "message.colony_schematics.creative_only": "Размещение чертежей доступно только в творческом режиме.",
   "message.colony_schematics.placed": "Размещено блоков: %s. Размер схемы: %sx%sx%s.",
   "message.colony_schematics.placement_details": "Восстановлено блоков с данными: %s, сущностей: %s; пропущено позиций: %s.",
   "message.colony_schematics.required_mods": "Схема указывает необходимые моды: %s. Отсутствующие блоки могут заменяться воздухом.",
-  "message.colony_schematics.failed": "Не удалось прочитать или разместить схему. Подробности в журнале."
+  "message.colony_schematics.failed": "Не удалось прочитать или разместить схему. Подробности в журнале.",
+  "message.colony_schematics.scan_first_corner": "Первая точка выбрана: %s, %s, %s. ПКМ по противоположному углу инструментом чертежей.",
+  "message.colony_schematics.scan_too_large": "Выделение слишком большое: максимум %s блоков по стороне и %s блоков по объёму.",
+  "message.colony_schematics.scan_outside_world": "Выделенная область выходит за высоту текущего измерения.",
+  "message.colony_schematics.scan_saved": "Область %s×%s×%s сохранена в свиток чертежа. ПКМ по свитку, чтобы разместить копию.",
+  "message.colony_schematics.scan_failed": "Не удалось сохранить чертёж. Подробности в журнале.",
+  "message.colony_schematics.scroll_empty": "В этом свитке нет данных чертежа."
 }
