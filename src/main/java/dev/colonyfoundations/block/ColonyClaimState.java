@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -407,10 +408,11 @@ public final class ColonyClaimState extends PersistentState {
             ownerName = ownerName == null ? "" : ownerName;
             colonyLevel = Math.max(1, colonyLevel);
             Map<String, List<String>> normalizedPermissions = new LinkedHashMap<>();
+            Set<String> validMembers = Set.copyOf(members);
             if (memberPermissions != null) {
                 memberPermissions.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
                     String member = entry.getKey();
-                    if (member == null || !members.contains(member)
+                    if (member == null || !validMembers.contains(member)
                             || ColonyIdentityRules.parseUuid(member).isEmpty()) return;
                     List<String> grants = entry.getValue() == null ? List.of()
                             : entry.getValue().stream()
