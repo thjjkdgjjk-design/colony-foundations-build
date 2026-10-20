@@ -60,7 +60,7 @@ public final class SchematicCatalogScreen extends Screen {
                 status = "Creative mode is required for test placement.";
                 return;
             }
-            ClientPlayNetworking.send(new PlaceSchematicPayload(ENTRIES.get(selected).id(), rotation));
+            ColonySchematicsClient.requestPlacement(new PlaceSchematicPayload(ENTRIES.get(selected).id(), rotation));
             client.setScreen(null);
         }).dimensions(center - 65, this.height - 35, 135, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Close"), button ->
