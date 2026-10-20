@@ -101,6 +101,48 @@ class ColonyRequestStateTest {
     }
 
     @Test
+    void replacementCourierCanAdoptPersistedTripWithoutChangingTransferIdentity() {
+        UUID owner = UUID.randomUUID();
+        UUID previousCourier = UUID.randomUUID();
+        UUID replacementCourier = UUID.randomUUID();
+        BlockPos target = new BlockPos(8, 65, 8);
+        BlockPos warehouse = new BlockPos(3, 64, 3);
+        ColonyRequestState requests = new ColonyRequestState();
+        String id = requests.createOrMerge(owner, OVERWORLD, target,
+                Identifier.of("minecraft", "wheat_seeds"), 16, 5, 100).orElseThrow();
+        ColonyRequestState.RequestRecord reserved = requests.reserve(id, previousCourier, warehouse, 120).orElseThrow();
+        String transferId = reserved.transferId();
+        requests.beginDelivery(id, previousCourier, transferId, 130).orElseThrow();
+
+        ColonyRequestState.RequestRecord adopted = requests.reassignCourier(
+                id, previousCourier, replacementCourier, transferId, 140).orElseThrow();
+        assertEquals(replacementCourier.toString(), adopted.courierUuid());
+        assertEquals(transferId, adopted.transferId());
+        assertEquals(warehouse.asLong(), adopted.courierWarehousePosition());
+        assertEquals("in_transit", adopted.status());
+        assertTrue(requests.recordDelivery(id, previousCourier, transferId, 4, 150).isEmpty());
+        assertTrue(requests.recordDelivery(id, replacementCourier, transferId, 4, 160).isPresent());
+    }
+
+    @Test
+    void replacementCourierCannotAdoptAnotherTripsTokenOrCompletedTrip() {
+        UUID owner = UUID.randomUUID();
+        UUID previousCourier = UUID.randomUUID();
+        UUID replacementCourier = UUID.randomUUID();
+        ColonyRequestState requests = new ColonyRequestState();
+        String id = requests.createOrMerge(owner, OVERWORLD, new BlockPos(8, 65, 8),
+                Identifier.of("minecraft", "wheat_seeds"), 8, 5, 100).orElseThrow();
+        ColonyRequestState.RequestRecord reserved = requests.reserve(id, previousCourier,
+                new BlockPos(3, 64, 3), 120).orElseThrow();
+        assertTrue(requests.reassignCourier(id, previousCourier, replacementCourier,
+                UUID.randomUUID().toString(), 130).isEmpty());
+        assertTrue(requests.reassignCourier(id, previousCourier, replacementCourier,
+                reserved.transferId(), 130).isPresent());
+        assertTrue(requests.reassignCourier(id, previousCourier, replacementCourier,
+                reserved.transferId(), 140).isEmpty());
+    }
+
+    @Test
     void malformedCountsAndUnknownStatusesAreDiscardedOnRestore() {
         UUID owner = UUID.randomUUID();
         String invalidCountId = UUID.randomUUID().toString();
