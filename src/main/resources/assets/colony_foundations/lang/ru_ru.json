@@ -1,4 +1,5 @@
 {
   "block.colony_foundations.town_hall": "Ратуша колонии",
-  "item.colony_foundations.builder_contract": "Контракт строителя"
+  "item.colony_foundations.builder_contract": "Контракт строителя",
+  "item.colony_foundations.worker_contract": "Контракт рабочего"
 }
