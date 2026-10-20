@@ -22,7 +22,138 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 }
 
+
+// Generate safe placeholder models/translations for every registered hut and utility block.
+// This keeps the registry's model inventory reproducible without redistributing upstream ARR artwork.
+tasks.register('generateColonyHutAssets') {
+    inputs.file('src/main/java/dev/colonyfoundations/block/ModHuts.java')
+    outputs.dir('src/main/resources/assets/colony_foundations/blockstates')
+    outputs.dir('src/main/resources/assets/colony_foundations/models/block')
+    outputs.dir('src/main/resources/assets/colony_foundations/items')
+
+    doLast {
+        def sourceText = file('src/main/java/dev/colonyfoundations/block/ModHuts.java').getText('UTF-8')
+        def registrySectionStart = sourceText.indexOf('public static final List<String> IDS = List.of(')
+        def registrySectionEnd = sourceText.indexOf(');', registrySectionStart)
+        if (registrySectionStart < 0 || registrySectionEnd < 0) {
+            throw new GradleException('Could not discover ModHuts.IDS while generating block resources')
+        }
+        def registrySection = sourceText.substring(registrySectionStart, registrySectionEnd)
+        def matcher = registrySection =~ /"([a-z0-9_]+)"/
+        def hutIds = []
+        matcher.each { full, id -> hutIds << id }
+        if (hutIds.isEmpty()) throw new GradleException('ModHuts.IDS is empty')
+
+        def assets = file('src/main/resources/assets/colony_foundations')
+        def blockstatesDir = new File(assets, 'blockstates')
+        def modelsBlockDir = new File(assets, 'models/block')
+        def itemsDir = new File(assets, 'items')
+        [blockstatesDir, modelsBlockDir, itemsDir].each { it.mkdirs() }
+
+        def russianNames = [
+            hut_alchemist: 'Хижина алхимика',
+            hut_archery: 'Лучная мастерская',
+            hut_baker: 'Пекарня',
+            hut_barracks: 'Казармы',
+            hut_barracks_tower: 'Башня казарм',
+            hut_beekeeper: 'Пасека',
+            hut_blacksmith: 'Кузница',
+            hut_builder: 'Хижина строителя',
+            hut_chicken_herder: 'Курятник',
+            hut_citizen: 'Дом жителя',
+            hut_combat_academy: 'Боевая академия',
+            hut_composter: 'Компостер',
+            hut_concrete_mixer: 'Бетономешалка',
+            hut_cook: 'Хижина повара',
+            hut_cowboy: 'Коровник',
+            hut_crusher: 'Дробилка',
+            hut_deliveryman: 'Хижина курьера',
+            hut_dyer: 'Красильня',
+            hut_enchanter: 'Хижина зачарователя',
+            hut_farmer: 'Ферма',
+            hut_fisherman: 'Рыбацкая хижина',
+            hut_fletcher: 'Лучник',
+            hut_florist: 'Цветочная мастерская',
+            hut_gate_house: 'Караульная у ворот',
+            hut_glassblower: 'Стеклодувная',
+            hut_graveyard: 'Кладбище',
+            hut_guard_tower: 'Сторожевая башня',
+            hut_hospital: 'Больница',
+            hut_kitchen: 'Кухня',
+            hut_library: 'Библиотека',
+            hut_lumberjack: 'Хижина лесоруба',
+            hut_mechanic: 'Механическая мастерская',
+            hut_miner: 'Шахта',
+            hut_mystical_site: 'Мистическое место',
+            hut_nether_worker: 'Хижина работника Незера',
+            hut_plantation: 'Плантация',
+            hut_rabbit_hutch: 'Кроличий вольер',
+            hut_sawmill: 'Лесопилка',
+            hut_school: 'Школа',
+            hut_shepherd: 'Овчарня',
+            hut_sifter: 'Просеиватель',
+            hut_smeltery: 'Плавильня',
+            hut_stable: 'Конюшня',
+            hut_stone_smeltery: 'Каменная плавильня',
+            hut_stonemason: 'Каменотёс',
+            hut_swine_herder: 'Свинарник',
+            hut_tavern: 'Таверна',
+            hut_university: 'Университет',
+            hut_warehouse: 'Склад',
+            simple_quarry: 'Малый карьер',
+            medium_quarry: 'Средний карьер',
+            large_quarry: 'Большой карьер',
+            stash: 'Тайник колонии',
+            post_box: 'Почтовый ящик',
+            scarecrow: 'Пугало',
+            colony_rack: 'Стеллаж колонии',
+            plantation_field: 'Поле плантации',
+            colony_flag_banner: 'Знамя колонии',
+            colony_flag_wall_banner: 'Настенное знамя колонии',
+            construction_tape: 'Строительная лента',
+            colony_gate: 'Ворота колонии',
+            colony_barrel: 'Бочка колонии'
+        ]
+
+        def json = new groovy.json.JsonOutput()
+        hutIds.each { id ->
+            def blockStateFile = new File(blockstatesDir, id + '.json')
+            def blockModelFile = new File(modelsBlockDir, id + '.json')
+            def itemModelFile = new File(itemsDir, id + '.json')
+            blockStateFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+                variants: ['': [model: "colony_foundations:block/${id}"]]
+            ])), 'UTF-8')
+            blockModelFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+                parent: 'minecraft:block/cube_all',
+                textures: [all: 'minecraft:block/oak_planks']
+            ])), 'UTF-8')
+            itemModelFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([
+                model: [type: 'minecraft:model', model: "colony_foundations:block/${id}"]
+            ])), 'UTF-8')
+        }
+
+        ['en_us': false, 'ru_ru': true].each { locale, russian ->
+            def langFile = new File(assets, "lang/${locale}.json")
+            langFile.parentFile.mkdirs()
+            def langMap = langFile.exists()
+                    ? new groovy.json.JsonSlurper().parse(langFile, 'UTF-8')
+                    : [:]
+            hutIds.each { id ->
+                def key = "block.colony_foundations.${id}"
+                if (russian) {
+                    langMap[key] = russianNames.get(id) ?: id.replace('_', ' ')
+                } else {
+                    langMap[key] = id.split('_').collect { it.substring(0, 1).toUpperCase() + it.substring(1) }.join(' ')
+                }
+            }
+            langFile.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(langMap)), 'UTF-8')
+        }
+        logger.lifecycle("Generated placeholder blockstates/models/translations for ${hutIds.size()} colony hut and utility blocks.")
+    }
+}
+
 processResources {
+    dependsOn tasks.named('generateColonyHutAssets')
     inputs.property 'version', project.version
     filesMatching('fabric.mod.json') {
         expand 'version': project.version
