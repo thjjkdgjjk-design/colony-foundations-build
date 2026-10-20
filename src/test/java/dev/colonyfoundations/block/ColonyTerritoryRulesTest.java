@@ -11,7 +11,7 @@ class ColonyTerritoryRulesTest {
     @Test
     void initialClaimIncludesCenterAndFourChunksInEachDirection() {
         assertTrue(ColonyTerritoryRules.containsInitialClaim(0, 0, 0, 0));
-        assertTrue(ColonyTerritoryRules.containsInitialClaim(0, 0, 80, -64));
+        assertTrue(ColonyTerritoryRules.containsInitialClaim(0, 0, 79, -64));
         assertTrue(ColonyTerritoryRules.containsInitialClaim(15, 15, -64, 79));
         assertFalse(ColonyTerritoryRules.containsInitialClaim(0, 0, 80, 0));
         assertFalse(ColonyTerritoryRules.containsInitialClaim(0, 0, 0, -81));
