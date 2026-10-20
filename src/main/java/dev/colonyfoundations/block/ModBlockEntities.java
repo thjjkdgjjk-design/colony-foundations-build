@@ -1,0 +1,21 @@
+package dev.colonyfoundations.block;
+
+import dev.colonyfoundations.ColonyFoundations;
+import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.util.Identifier;
+
+public final class ModBlockEntities {
+    public static final BlockEntityType<TownHallBlockEntity> TOWN_HALL = Registry.register(
+            Registries.BLOCK_ENTITY_TYPE,
+            Identifier.of(ColonyFoundations.MOD_ID, "town_hall"),
+            BlockEntityType.Builder.create(TownHallBlockEntity::new, ModBlocks.TOWN_HALL).build()
+    );
+
+    private ModBlockEntities() { }
+
+    public static void initialize() {
+        // Loading this class performs the registrations above.
+    }
+}
