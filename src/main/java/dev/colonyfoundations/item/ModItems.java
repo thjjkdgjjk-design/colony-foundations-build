@@ -20,6 +20,17 @@ public final class ModItems {
             new Item(new Item.Settings().maxCount(16).registryKey(BUILDER_CONTRACT_KEY))
     );
 
+    private static final Identifier WORKER_CONTRACT_ID =
+            Identifier.of(ColonyFoundations.MOD_ID, "worker_contract");
+    private static final RegistryKey<Item> WORKER_CONTRACT_KEY =
+            RegistryKey.of(RegistryKeys.ITEM, WORKER_CONTRACT_ID);
+
+    public static final Item WORKER_CONTRACT = Registry.register(
+            Registries.ITEM,
+            WORKER_CONTRACT_ID,
+            new Item(new Item.Settings().maxCount(16).registryKey(WORKER_CONTRACT_KEY))
+    );
+
     private ModItems() { }
 
     public static void initialize() {
