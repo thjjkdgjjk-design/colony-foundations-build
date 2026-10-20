@@ -9,6 +9,12 @@ import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.nbt.NbtSizeTracker;
 import net.minecraft.registry.Registries;
 import net.minecraft.resource.Resource;
 import net.minecraft.resource.ResourceManager;
@@ -22,22 +28,24 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Original data-pack blueprint loader for Colony Foundations.
- * Files live at data/<namespace>/colony_blueprints/<path>.json.
- * This deliberately does not claim compatibility with Structurize's native format.
+ * Loads Colony Foundations JSON blueprints and Structurize v1 compressed-NBT
+ * blueprints. Only the palette and block grid are imported; tile entities,
+ * entities, and special Structurize substitutions are deliberately not executed.
  */
 public final class BlueprintRegistry implements SimpleSynchronousResourceReloadListener {
     private static final String RESOURCE_FOLDER = "colony_blueprints";
-    private static final int FORMAT_VERSION = 1;
-    private static final int MAX_BLOCKS = 8192;
-    private static final int MAX_COORDINATE = 128;
-    private static volatile Map<Identifier, List<CottageBlueprint.Placement>> BLUEPRINTS = Map.of();
+    private static final int JSON_FORMAT_VERSION = 1;
+    private static final int MAX_BLOCKS = 131_072;
+    private static final int MAX_DIMENSION = 128;
+    private static final long MAX_NBT_BYTES = 64L * 1024L * 1024L;
+    private static volatile Map<Identifier, BlueprintDefinition> BLUEPRINTS = Map.of();
 
     private BlueprintRegistry() { }
 
@@ -45,8 +53,12 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
         ResourceManagerHelper.get(ResourceType.SERVER_DATA).registerReloadListener(new BlueprintRegistry());
     }
 
-    public static Optional<List<CottageBlueprint.Placement>> get(Identifier id) {
+    public static Optional<BlueprintDefinition> getDefinition(Identifier id) {
         return Optional.ofNullable(BLUEPRINTS.get(id));
+    }
+
+    public static List<BlueprintDefinition> all() {
+        return BLUEPRINTS.values().stream().sorted(Comparator.comparing(BlueprintDefinition::title)).toList();
     }
 
     @Override
@@ -56,97 +68,190 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
 
     @Override
     public void reload(ResourceManager manager) {
-        Map<Identifier, List<CottageBlueprint.Placement>> loaded = new HashMap<>();
-        manager.findResources(RESOURCE_FOLDER, id -> id.getPath().endsWith(".json")).forEach((fileId, resource) -> {
-            String prefix = RESOURCE_FOLDER + "/";
-            String resourcePath = fileId.getPath();
-            if (!resourcePath.startsWith(prefix) || !resourcePath.endsWith(".json")) {
-                return;
-            }
+        Map<Identifier, BlueprintDefinition> loaded = new HashMap<>();
+        manager.findResources(RESOURCE_FOLDER, id -> id.getPath().endsWith(".json") || id.getPath().endsWith(".nbt"))
+                .forEach((fileId, resource) -> {
+                    String prefix = RESOURCE_FOLDER + "/";
+                    String resourcePath = fileId.getPath();
+                    if (!resourcePath.startsWith(prefix)) return;
 
-            String blueprintPath = resourcePath.substring(prefix.length(), resourcePath.length() - ".json".length());
-            if (blueprintPath.isBlank()) return;
-            Identifier blueprintId = Identifier.of(fileId.getNamespace(), blueprintPath);
+                    String extension = resourcePath.endsWith(".nbt") ? ".nbt" : ".json";
+                    if (!resourcePath.endsWith(extension)) return;
+                    String relativePath = resourcePath.substring(prefix.length(), resourcePath.length() - extension.length());
+                    if (relativePath.isBlank()) return;
+                    Identifier blueprintId = Identifier.of(fileId.getNamespace(), relativePath);
 
-            try (Reader reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8)) {
-                JsonElement parsed = JsonParser.parseReader(reader);
-                if (!parsed.isJsonObject()) throw new IllegalArgumentException("root JSON value must be an object");
-                List<CottageBlueprint.Placement> placements = parseBlueprint(parsed.getAsJsonObject());
-                loaded.put(blueprintId, List.copyOf(placements));
-                ColonyFoundations.LOGGER.info("Loaded blueprint {} ({} blocks)", blueprintId, placements.size());
-            } catch (IOException | RuntimeException exception) {
-                ColonyFoundations.LOGGER.warn("Ignoring invalid Colony Foundations blueprint {}: {}",
-                        blueprintId, exception.getMessage());
-            }
-        });
+                    try {
+                        BlueprintDefinition definition = extension.equals(".nbt")
+                                ? readStructurizeNbt(blueprintId, resource)
+                                : readJson(blueprintId, resource);
+                        if (definition != null && !definition.placements().isEmpty()) {
+                            loaded.put(blueprintId, definition);
+                            ColonyFoundations.LOGGER.info("Loaded blueprint {} ({} blocks, {}x{}x{})",
+                                    blueprintId, definition.placements().size(),
+                                    definition.sizeX(), definition.sizeY(), definition.sizeZ());
+                        }
+                    } catch (IOException | RuntimeException exception) {
+                        ColonyFoundations.LOGGER.warn("Ignoring invalid blueprint {}: {}",
+                                blueprintId, exception.getMessage());
+                    }
+                });
 
         BLUEPRINTS = Map.copyOf(loaded);
-        ColonyFoundations.LOGGER.info("Loaded {} data-pack blueprint(s)", BLUEPRINTS.size());
+        ColonyFoundations.LOGGER.info("Loaded {} construction blueprints", BLUEPRINTS.size());
     }
 
-    private static List<CottageBlueprint.Placement> parseBlueprint(JsonObject root) {
-        if (!root.has("format") || root.get("format").getAsInt() != FORMAT_VERSION) {
-            throw new IllegalArgumentException("unsupported or missing format version (expected " + FORMAT_VERSION + ")");
+    private static BlueprintDefinition readJson(Identifier id, Resource resource) throws IOException {
+        try (Reader reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8)) {
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) throw new IllegalArgumentException("root JSON value must be an object");
+            JsonObject root = parsed.getAsJsonObject();
+            if (!root.has("format") || root.get("format").getAsInt() != JSON_FORMAT_VERSION) {
+                throw new IllegalArgumentException("unsupported JSON format version");
+            }
+
+            JsonArray blocks = root.getAsJsonArray("blocks");
+            if (blocks == null || blocks.isEmpty()) throw new IllegalArgumentException("blocks must be a non-empty array");
+            if (blocks.size() > MAX_BLOCKS) throw new IllegalArgumentException("blueprint exceeds block safety limit");
+
+            List<CottageBlueprint.Placement> placements = new ArrayList<>(blocks.size());
+            int maxX = 0, maxY = 0, maxZ = 0;
+            for (JsonElement element : blocks) {
+                if (!element.isJsonObject()) throw new IllegalArgumentException("each blocks entry must be an object");
+                JsonObject entry = element.getAsJsonObject();
+                JsonArray coordinates = entry.getAsJsonArray("pos");
+                if (coordinates == null || coordinates.size() != 3 || !entry.has("block")) {
+                    throw new IllegalArgumentException("expected pos: [x,y,z] and block");
+                }
+                int x = coordinates.get(0).getAsInt();
+                int y = coordinates.get(1).getAsInt();
+                int z = coordinates.get(2).getAsInt();
+                validatePosition(x, y, z);
+                BlockState state = readBlockState(entry.get("block").getAsString(), entry.getAsJsonObject("properties"));
+                if (!state.isAir()) placements.add(new CottageBlueprint.Placement(new BlockPos(x, y, z), state));
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+                maxZ = Math.max(maxZ, z);
+            }
+            return new BlueprintDefinition(id, displayTitle(id), maxX + 1, maxY + 1, maxZ + 1, placements);
         }
-        JsonArray blocks = root.getAsJsonArray("blocks");
-        if (blocks == null || blocks.isEmpty()) throw new IllegalArgumentException("blocks must be a non-empty array");
-        if (blocks.size() > MAX_BLOCKS) {
-            throw new IllegalArgumentException("blueprint exceeds the " + MAX_BLOCKS + " block safety limit");
+    }
+
+    private static BlueprintDefinition readStructurizeNbt(Identifier id, Resource resource) throws IOException {
+        NbtCompound root;
+        try (var input = resource.getInputStream()) {
+            root = NbtIo.readCompressed(input, NbtSizeTracker.of(MAX_NBT_BYTES));
+        }
+        short sx = root.getShort("size_x").orElse((short) 0);
+        short sy = root.getShort("size_y").orElse((short) 0);
+        short sz = root.getShort("size_z").orElse((short) 0);
+        int sizeX = Short.toUnsignedInt(sx);
+        int sizeY = Short.toUnsignedInt(sy);
+        int sizeZ = Short.toUnsignedInt(sz);
+        long volume = (long) sizeX * sizeY * sizeZ;
+        if (sizeX < 1 || sizeY < 1 || sizeZ < 1
+                || sizeX > MAX_DIMENSION || sizeY > MAX_DIMENSION || sizeZ > MAX_DIMENSION
+                || volume > MAX_BLOCKS) {
+            throw new IllegalArgumentException("invalid or excessive Structurize blueprint dimensions");
         }
 
-        List<CottageBlueprint.Placement> placements = new ArrayList<>(blocks.size());
-        for (JsonElement element : blocks) {
-            if (!element.isJsonObject()) throw new IllegalArgumentException("each blocks entry must be an object");
-            JsonObject entry = element.getAsJsonObject();
-            JsonArray coordinates = entry.getAsJsonArray("pos");
-            if (coordinates == null || coordinates.size() != 3) {
-                throw new IllegalArgumentException("each block needs pos: [x, y, z]");
-            }
-
-            int x = coordinates.get(0).getAsInt();
-            int y = coordinates.get(1).getAsInt();
-            int z = coordinates.get(2).getAsInt();
-            if (Math.abs((long) x) > MAX_COORDINATE
-                    || Math.abs((long) y) > MAX_COORDINATE
-                    || Math.abs((long) z) > MAX_COORDINATE) {
-                throw new IllegalArgumentException("block position exceeds +/-" + MAX_COORDINATE + " blocks");
-            }
-
-            if (!entry.has("block")) throw new IllegalArgumentException("each block needs a namespaced block identifier");
-            Identifier blockId = Identifier.tryParse(entry.get("block").getAsString());
-            if (blockId == null) throw new IllegalArgumentException("invalid block identifier: " + entry.get("block"));
-            if (!Registries.BLOCK.containsId(blockId)) {
-                throw new IllegalArgumentException("unknown block: " + blockId);
-            }
-            Block block = Registries.BLOCK.get(blockId);
-            BlockState state = block.getDefaultState();
-
-            if (entry.has("properties")) {
-                JsonElement propertiesElement = entry.get("properties");
-                if (!propertiesElement.isJsonObject()) throw new IllegalArgumentException("properties must be an object");
-                state = applyProperties(state, propertiesElement.getAsJsonObject());
-            }
-
-            placements.add(new CottageBlueprint.Placement(new BlockPos(x, y, z), state));
+        NbtList paletteTag = root.getList("palette", NbtElement.COMPOUND_TYPE)
+                .orElseThrow(() -> new IllegalArgumentException("palette list is missing"));
+        if (paletteTag.isEmpty() || paletteTag.size() > 65_535) {
+            throw new IllegalArgumentException("palette is empty or too large");
         }
-        return placements;
+        List<BlockState> palette = new ArrayList<>(paletteTag.size());
+        for (int i = 0; i < paletteTag.size(); i++) {
+            NbtCompound entry = paletteTag.getCompound(i)
+                    .orElseThrow(() -> new IllegalArgumentException("palette contains a non-compound entry"));
+            palette.add(readNbtBlockState(entry));
+        }
+
+        int[] packedBlocks = root.getIntArray("blocks").orElseThrow(
+                () -> new IllegalArgumentException("packed block array is missing"));
+        if (packedBlocks.length * 2L < volume) throw new IllegalArgumentException("packed block array is truncated");
+
+        List<CottageBlueprint.Placement> placements = new ArrayList<>((int) Math.min(volume, MAX_BLOCKS));
+        int linear = 0;
+        for (int y = 0; y < sizeY; y++) {
+            for (int z = 0; z < sizeZ; z++) {
+                for (int x = 0; x < sizeX; x++) {
+                    int packed = packedBlocks[linear / 2];
+                    int paletteIndex = (linear & 1) == 0 ? (packed >>> 16) & 0xFFFF : packed & 0xFFFF;
+                    linear++;
+                    if (paletteIndex >= palette.size()) continue;
+                    BlockState state = palette.get(paletteIndex);
+                    // Structurize air cells are voids, not instructions to erase terrain.
+                    if (!state.isAir()) placements.add(new CottageBlueprint.Placement(new BlockPos(x, y, z), state));
+                }
+            }
+        }
+        return new BlueprintDefinition(id, displayTitle(id), sizeX, sizeY, sizeZ, placements);
+    }
+
+    private static BlockState readNbtBlockState(NbtCompound tag) {
+        String name = tag.getString("Name").orElse("minecraft:air");
+        NbtCompound properties = tag.getCompound("Properties").orElse(new NbtCompound());
+        JsonObject propsJson = new JsonObject();
+        for (String key : properties.getKeys()) {
+            properties.getString(key).ifPresent(value -> propsJson.addProperty(key, value));
+        }
+        return readBlockState(name, propsJson);
+    }
+
+    private static BlockState readBlockState(String rawId, JsonObject properties) {
+        Identifier blockId = Identifier.tryParse(rawId);
+        if (blockId == null || !Registries.BLOCK.containsId(blockId)) {
+            ColonyFoundations.LOGGER.warn("Blueprint references missing block {}; replacing it with air", rawId);
+            return Blocks.AIR.getDefaultState();
+        }
+        Block block = Registries.BLOCK.get(blockId);
+        BlockState state = block.getDefaultState();
+        if (properties == null) return state;
+
+        for (Map.Entry<String, JsonElement> entry : properties.entrySet()) {
+            Property<?> property = state.getBlock().getStateManager().getProperty(entry.getKey());
+            if (property == null) {
+                ColonyFoundations.LOGGER.debug("Ignoring unsupported property {} on {}", entry.getKey(), blockId);
+                continue;
+            }
+            state = withProperty(state, property, entry.getValue().getAsString());
+        }
+        return state;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static BlockState applyProperties(BlockState state, JsonObject properties) {
-        for (Map.Entry<String, JsonElement> entry : properties.entrySet()) {
-            Property property = state.getBlock().getStateManager().getProperty(entry.getKey());
-            if (property == null) {
-                throw new IllegalArgumentException("block " + Registries.BLOCK.getId(state.getBlock())
-                        + " has no property '" + entry.getKey() + "'");
-            }
-            Optional<?> value = property.parse(entry.getValue().getAsString());
-            if (value.isEmpty()) {
-                throw new IllegalArgumentException("invalid value '" + entry.getValue().getAsString()
-                        + "' for property '" + entry.getKey() + "'");
-            }
-            state = state.with(property, (Comparable) value.get());
+    private static BlockState withProperty(BlockState state, Property property, String valueText) {
+        Optional value = property.parse(valueText);
+        return value.isPresent() ? state.with(property, (Comparable) value.get()) : state;
+    }
+
+    private static void validatePosition(int x, int y, int z) {
+        if (x < 0 || y < 0 || z < 0 || x >= MAX_DIMENSION || y >= MAX_DIMENSION || z >= MAX_DIMENSION) {
+            throw new IllegalArgumentException("position must be inside a blueprint of max dimension " + MAX_DIMENSION);
         }
-        return state;
+    }
+
+    private static String displayTitle(Identifier id) {
+        String path = id.getPath();
+        String[] parts = path.split("/");
+        if (parts.length >= 5 && parts[parts.length - 2].equals("citizen")) {
+            String style = parts[parts.length - 4];
+            String tier = parts[parts.length - 1].replaceAll("[^0-9]", "");
+            return styleTitle(style) + " — дом жителя " + (tier.isBlank() ? "" : tier);
+        }
+        if (path.equals("cottage")) return "Стартовый коттедж";
+        return path.replace('/', ' ').replace('_', ' ');
+    }
+
+    private static String styleTitle(String style) {
+        return switch (style) {
+            case "birch" -> "Берёза";
+            case "darkoak" -> "Тёмный дуб";
+            case "defaultwooden" -> "Деревянный";
+            case "stone" -> "Каменный";
+            case "taiga" -> "Тайга";
+            default -> style;
+        };
     }
 }
