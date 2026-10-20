@@ -313,7 +313,7 @@ public final class CitizenJobController {
             if (world.isChunkLoaded(targetPos)
                     && world.getBlockEntity(targetPos) instanceof ColonyHutBlockEntity target
                     && claims.ownerAt(dimension, targetPos).filter(owner::equals).isPresent()
-                    && target.hasDeliveryReceipt(transferId)) {
+                    && target.hasDeliveryReceipt(transferId, courierHut.courierCargoItemId(), courierHut.courierCargoCount())) {
                 tickCourierDelivery(world, courierHut, courier, requests, request, owner, dimension);
                 return;
             }
@@ -323,7 +323,8 @@ public final class CitizenJobController {
                     && world.getBlockEntity(warehousePos) instanceof ColonyHutBlockEntity warehouse
                     && warehouse.hutId().equals("hut_warehouse")
                     && claims.ownerAt(dimension, warehousePos).filter(owner::equals).isPresent()
-                    && warehouse.hasDeliveryReceipt("refund:" + transferId)) {
+                    && warehouse.hasDeliveryReceipt("refund:" + transferId,
+                            courierHut.courierCargoItemId(), courierHut.courierCargoCount())) {
                 returnCourierCargoToWarehouse(world, courierHut, requests, requestId, courier, owner, dimension);
                 return;
             }
@@ -465,7 +466,7 @@ public final class CitizenJobController {
         String itemId = courierHut.courierCargoItemId();
         int count = courierHut.courierCargoCount();
 
-        if (target.hasDeliveryReceipt(transferId)) {
+        if (target.hasDeliveryReceipt(transferId, itemId, count)) {
             if (!current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id())
                     || !current.courierUuid().equals(courier.getUuid().toString())) {
                 // The receipt proves this exact payload was applied; only reconcile the courier copy.
@@ -507,7 +508,7 @@ public final class CitizenJobController {
         Identifier parsedItem = Identifier.tryParse(itemId);
         if (parsedItem == null || !Registries.ITEM.containsId(parsedItem)) return;
         ItemStack delivery = new ItemStack(Registries.ITEM.get(parsedItem), count);
-        if (!target.hasDeliveryReceipt(transferId)
+        if (!target.hasDeliveryReceipt(transferId, itemId, count)
                 && !target.storeItemsOnce(transferId, List.of(delivery))) return;
 
         // If request persistence failed, the next tick recognizes the saved destination receipt.

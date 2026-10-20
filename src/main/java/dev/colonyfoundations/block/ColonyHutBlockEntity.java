@@ -26,7 +26,6 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.Optional;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -144,6 +143,13 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return isValidTransferId(transferId) && appliedTransferReceipts.containsKey(transferId);
     }
 
+    /** Only trust a durable receipt if its item and amount match the cargo being reconciled. */
+    public boolean hasDeliveryReceipt(String transferId, String itemId, int amount) {
+        if (!isValidTransferId(transferId) || amount < 1 || amount > 64) return false;
+        Identifier item = Identifier.tryParse(itemId);
+        return item != null && (item + "#" + amount).equals(appliedTransferReceipts.get(transferId));
+    }
+
     private static boolean isValidTransferId(String transferId) {
         return transferId != null && !transferId.isBlank() && transferId.length() <= 128
                 && transferId.indexOf('\n') < 0 && transferId.indexOf('\t') < 0;
@@ -152,7 +158,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     private static <V> void rememberReceipt(LinkedHashMap<String, V> receipts, String transferId, V value) {
         receipts.putIfAbsent(transferId, value);
         while (receipts.size() > MAX_TRANSFER_RECEIPTS) {
-            Iterator<String> iterator = receipts.keySet().iterator();
+            java.util.Iterator<String> iterator = receipts.keySet().iterator();
             if (!iterator.hasNext()) break;
             iterator.next();
             iterator.remove();
