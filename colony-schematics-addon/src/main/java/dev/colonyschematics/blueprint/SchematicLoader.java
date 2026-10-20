@@ -251,7 +251,8 @@ public final class SchematicLoader {
                         "Данные служебного блока " + typeId + " запрещены и не импортированы");
                 continue;
             }
-            BlockPos pos = new BlockPos(readNumber(tag, "x"), readNumber(tag, "y"), readNumber(tag, "z"));
+            BlockPos pos = new BlockPos(readRequiredNumber(tag, "x"),
+                    readRequiredNumber(tag, "y"), readRequiredNumber(tag, "z"));
             if (!inside(pos, sizeX, sizeY, sizeZ)) {
                 throw new IllegalArgumentException("Block-entity position is outside schematic bounds: " + pos);
             }
@@ -266,12 +267,17 @@ public final class SchematicLoader {
             throw new IllegalArgumentException("Entity count exceeds limit " + MAX_ENTITIES);
         }
         List<NbtCompound> result = new ArrayList<>(list.size());
+        int totalEntityNodes = 0;
         for (int i = 0; i < list.size(); i++) {
             final int entryIndex = i;
             NbtCompound tag = list.getCompound(i).orElseThrow(
                     () -> new IllegalArgumentException("Entity entry " + entryIndex + " is not a compound"));
             if (tag.isEmpty() || tag.getString("id").isEmpty()) {
                 throw new IllegalArgumentException("Entity entry " + entryIndex + " is empty or missing id");
+            }
+            totalEntityNodes += countEntityTreeNodes(tag, 0);
+            if (totalEntityNodes > MAX_ENTITIES) {
+                throw new IllegalArgumentException("Total entity and passenger count exceeds limit " + MAX_ENTITIES);
             }
             if (SchematicSafetyRules.containsUnsafeEntityTree(tag)) {
                 addCompatibilityWarning(compatibilityWarnings,
@@ -282,6 +288,26 @@ public final class SchematicLoader {
             result.add(tag.copy());
         }
         return List.copyOf(result);
+    }
+
+    private static int countEntityTreeNodes(NbtCompound entity, int depth) {
+        if (depth > SchematicSafetyRules.MAX_ENTITY_TREE_DEPTH) {
+            throw new IllegalArgumentException("Entity passenger nesting exceeds depth limit "
+                    + SchematicSafetyRules.MAX_ENTITY_TREE_DEPTH);
+        }
+        int count = 1;
+        NbtList passengers = entity.getList("Passengers").orElse(null);
+        if (passengers == null) return count;
+        for (int i = 0; i < passengers.size(); i++) {
+            final int passengerIndex = i;
+            NbtCompound passenger = passengers.getCompound(i).orElseThrow(
+                    () -> new IllegalArgumentException("Passenger " + passengerIndex + " is not a compound"));
+            count += countEntityTreeNodes(passenger, depth + 1);
+            if (count > MAX_ENTITIES) {
+                throw new IllegalArgumentException("Entity passenger tree exceeds count limit " + MAX_ENTITIES);
+            }
+        }
+        return count;
     }
 
     private static List<String> readRequiredMods(NbtCompound root) {
@@ -308,6 +334,16 @@ public final class SchematicLoader {
         return pos.getX() >= 0 && pos.getX() < sx
                 && pos.getY() >= 0 && pos.getY() < sy
                 && pos.getZ() >= 0 && pos.getZ() < sz;
+    }
+
+    private static int readRequiredNumber(NbtCompound tag, String key) {
+        Optional<Integer> intValue = tag.getInt(key);
+        if (intValue.isPresent()) return intValue.get();
+        Optional<Short> shortValue = tag.getShort(key);
+        if (shortValue.isPresent()) return shortValue.get().intValue();
+        Optional<Byte> byteValue = tag.getByte(key);
+        if (byteValue.isPresent()) return byteValue.get().intValue();
+        throw new IllegalArgumentException("Block-entity entry is missing numeric coordinate " + key);
     }
 
     private static int readNumber(NbtCompound tag, String key) {

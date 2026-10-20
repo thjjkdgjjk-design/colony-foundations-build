@@ -42,4 +42,35 @@ class SchematicSafetyRulesTest {
 
         assertFalse(SchematicSafetyRules.containsUnsafeEntityTree(horse));
     }
+
+    @Test
+    void excessivelyDeepPassengerTreesAreRejected() {
+        NbtCompound root = entity("minecraft:horse");
+        NbtCompound current = root;
+        for (int i = 0; i <= SchematicSafetyRules.MAX_ENTITY_TREE_DEPTH; i++) {
+            NbtCompound next = entity("minecraft:villager");
+            NbtList child = new NbtList();
+            child.add(next);
+            current.put("Passengers", child);
+            current = next;
+        }
+        assertTrue(SchematicSafetyRules.containsUnsafeEntityTree(root));
+    }
+
+    @Test
+    void passengerTreesWithTooManyNodesAreRejected() {
+        NbtCompound root = entity("minecraft:horse");
+        NbtList passengers = new NbtList();
+        for (int i = 0; i < SchematicSafetyRules.MAX_ENTITY_TREE_NODES; i++) {
+            passengers.add(entity("minecraft:villager"));
+        }
+        root.put("Passengers", passengers);
+        assertTrue(SchematicSafetyRules.containsUnsafeEntityTree(root));
+    }
+
+    private static NbtCompound entity(String id) {
+        NbtCompound entity = new NbtCompound();
+        entity.putString("id", id);
+        return entity;
+    }
 }

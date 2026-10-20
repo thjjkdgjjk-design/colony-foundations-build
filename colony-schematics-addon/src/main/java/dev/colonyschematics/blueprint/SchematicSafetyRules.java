@@ -7,6 +7,9 @@ import java.util.Set;
 
 /** Prevent imported schematics from activating command/structure-control blocks or entities. */
 public final class SchematicSafetyRules {
+    static final int MAX_ENTITY_TREE_DEPTH = 32;
+    static final int MAX_ENTITY_TREE_NODES = 2_048;
+
     private static final Set<String> UNSAFE_BLOCK_IDS = Set.of(
             "minecraft:command_block",
             "minecraft:chain_command_block",
@@ -28,8 +31,13 @@ public final class SchematicSafetyRules {
         return isUnsafeBlockId(id);
     }
 
-    /** Recursively rejects command-block minecarts and player records, including nested passengers. */
+    /** Recursively rejects unsafe, malformed, or excessively deep passenger trees. */
     public static boolean containsUnsafeEntityTree(NbtCompound entity) {
+        return containsUnsafeEntityTree(entity, 0, new int[] {0});
+    }
+
+    private static boolean containsUnsafeEntityTree(NbtCompound entity, int depth, int[] totalNodes) {
+        if (depth > MAX_ENTITY_TREE_DEPTH || ++totalNodes[0] > MAX_ENTITY_TREE_NODES) return true;
         String id = entity.getString("id").orElse("");
         if (id.isBlank() || isUnsafeEntityId(id)) return true;
 
@@ -37,7 +45,7 @@ public final class SchematicSafetyRules {
         if (passengers == null) return false;
         for (int i = 0; i < passengers.size(); i++) {
             NbtCompound passenger = passengers.getCompound(i).orElse(null);
-            if (passenger == null || containsUnsafeEntityTree(passenger)) return true;
+            if (passenger == null || containsUnsafeEntityTree(passenger, depth + 1, totalNodes)) return true;
         }
         return false;
     }
