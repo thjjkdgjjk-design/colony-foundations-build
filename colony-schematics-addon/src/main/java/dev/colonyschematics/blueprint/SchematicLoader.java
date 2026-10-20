@@ -23,8 +23,10 @@ import net.minecraft.util.math.BlockPos;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -66,7 +68,8 @@ public final class SchematicLoader {
             List<BlockPlacement> blocks,
             List<BlockEntityPlacement> blockEntities,
             List<NbtCompound> entities,
-            List<String> requiredMods
+            List<String> requiredMods,
+            List<String> compatibilityWarnings
     ) {
         public Schematic {
             name = name == null || name.isBlank() ? "Безымянный чертёж" : name;
@@ -76,6 +79,7 @@ public final class SchematicLoader {
                     new BlockEntityPlacement(entry.position(), entry.nbt())).toList();
             entities = entities.stream().map(NbtCompound::copy).toList();
             requiredMods = List.copyOf(requiredMods);
+            compatibilityWarnings = List.copyOf(compatibilityWarnings);
         }
     }
 
@@ -183,11 +187,12 @@ public final class SchematicLoader {
             throw new IllegalArgumentException("Palette is empty or too large");
         }
 
+        Set<String> compatibilityWarnings = new LinkedHashSet<>();
         List<BlockState> palette = new ArrayList<>(paletteTag.size());
         for (int i = 0; i < paletteTag.size(); i++) {
             NbtCompound entry = paletteTag.getCompound(i)
                     .orElseThrow(() -> new IllegalArgumentException("Palette entry is not a compound"));
-            palette.add(readBlockState(entry));
+            palette.add(readBlockState(entry, compatibilityWarnings));
         }
 
         int[] packedBlocks = root.getIntArray("blocks")
@@ -221,7 +226,7 @@ public final class SchematicLoader {
                 id, placements.size(), blockEntities.size(), entities.size(), sizeX, sizeY, sizeZ);
 
         return new Schematic(sizeX, sizeY, sizeZ, name, primaryOffset,
-                placements, blockEntities, entities, requiredMods);
+                placements, blockEntities, entities, requiredMods, List.copyOf(compatibilityWarnings));
     }
 
     private static List<BlockEntityPlacement> readBlockEntities(
@@ -292,10 +297,13 @@ public final class SchematicLoader {
         return byteValue.orElse((byte) 0);
     }
 
-    private static BlockState readBlockState(NbtCompound tag) {
-        String name = tag.getString("Name").orElse("minecraft:air");
+    private static BlockState readBlockState(NbtCompound tag, Set<String> compatibilityWarnings) {
+        String name = tag.getString("Name")
+                .orElseThrow(() -> new IllegalArgumentException("Palette block is missing the Name field"));
         Identifier blockId = Identifier.tryParse(name);
         if (blockId == null || !Registries.BLOCK.containsId(blockId)) {
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Блок " + name + " отсутствует и заменён воздухом");
             ColonySchematics.LOGGER.warn("Schematic block {} is missing; replacing it with air", name);
             return Blocks.AIR.getDefaultState();
         }
@@ -309,15 +317,31 @@ public final class SchematicLoader {
 
         for (Map.Entry<String, JsonElement> entry : propsJson.entrySet()) {
             Property<?> property = state.getBlock().getStateManager().getProperty(entry.getKey());
-            if (property != null) state = withProperty(state, property, entry.getValue().getAsString());
+            if (property == null) {
+                addCompatibilityWarning(compatibilityWarnings,
+                        "Свойство " + entry.getKey() + " блока " + name + " не поддерживается");
+                continue;
+            }
+            state = withProperty(state, property, entry.getValue().getAsString(),
+                    compatibilityWarnings, name, entry.getKey());
         }
         return state;
     }
 
+    private static void addCompatibilityWarning(Set<String> warnings, String warning) {
+        if (warnings.size() < MAX_PALETTE) warnings.add(warning);
+    }
+
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static BlockState withProperty(BlockState state, Property property, String valueText) {
+    private static BlockState withProperty(BlockState state, Property property, String valueText,
+                                           Set<String> compatibilityWarnings, String blockName, String propertyName) {
         Optional value = property.parse(valueText);
-        return value.isPresent() ? state.with(property, (Comparable) value.get()) : state;
+        if (value.isEmpty()) {
+            addCompatibilityWarning(compatibilityWarnings,
+                    "Значение " + propertyName + "=" + valueText + " блока " + blockName + " не поддерживается");
+            return state;
+        }
+        return state.with(property, (Comparable) value.get());
     }
 
     static String displayName(Identifier id) {

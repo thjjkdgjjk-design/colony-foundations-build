@@ -6,6 +6,7 @@
   "message.colony_schematics.placed": "Placed %s blocks from a %sx%sx%s schematic.",
   "message.colony_schematics.placement_details": "Restored %s block entities and %s entities; skipped %s placements.",
   "message.colony_schematics.required_mods": "This schematic lists required mods: %s. Missing blocks may be replaced with air.",
+  "message.colony_schematics.compatibility_warnings": "Schematic compatibility warning: %s.",
   "message.colony_schematics.failed": "Could not read or place this schematic. See the log for details.",
   "message.colony_schematics.scan_first_corner": "First scan corner set at %s, %s, %s. Right-click the opposite corner with the Schematic Tool.",
   "message.colony_schematics.scan_too_large": "Selection exceeds the limits: max dimension %s and max volume %s blocks.",

@@ -71,6 +71,15 @@ public final class SchematicPlacementQueue {
         JOBS.put(requester, job);
         player.sendMessage(Text.translatable(
                 "message.colony_schematics.placement_queued", schematic.blocks().size()), false);
+        if (!schematic.compatibilityWarnings().isEmpty()) {
+            int displayed = Math.min(4, schematic.compatibilityWarnings().size());
+            String details = String.join("; ", schematic.compatibilityWarnings().subList(0, displayed));
+            if (schematic.compatibilityWarnings().size() > displayed) {
+                details += "; и ещё " + (schematic.compatibilityWarnings().size() - displayed);
+            }
+            player.sendMessage(Text.translatable(
+                    "message.colony_schematics.compatibility_warnings", details), true);
+        }
     }
 
     private static void tick(MinecraftServer server) {
