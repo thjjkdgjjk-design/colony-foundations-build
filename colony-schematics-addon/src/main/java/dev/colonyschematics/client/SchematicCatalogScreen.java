@@ -27,7 +27,7 @@ public final class SchematicCatalogScreen extends Screen {
     private int totalEntries = 0;
     private int visibleRows = 10;
     private String query = "";
-    private String status = "Loading blueprints from the server and enabled datapacks…";
+    private String status = Text.translatable("screen.colony_schematics.loading").getString();
 
     public SchematicCatalogScreen() {
         super(Text.translatable("screen.colony_schematics.catalog"));
@@ -37,7 +37,7 @@ public final class SchematicCatalogScreen extends Screen {
     protected void init() {
         int center = this.width / 2;
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("◀ Previous"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.previous"), button -> {
             if (page > 0) {
                 page--;
                 selected = 0;
@@ -45,7 +45,7 @@ public final class SchematicCatalogScreen extends Screen {
             }
         }).dimensions(14, 38, 90, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Next ▶"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.next"), button -> {
             if (page + 1 < totalPages) {
                 page++;
                 selected = 0;
@@ -53,34 +53,35 @@ public final class SchematicCatalogScreen extends Screen {
             }
         }).dimensions(this.width - 104, 38, 90, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Rotate 90°"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.rotate", rotation * 90), button -> {
             rotation = (rotation + 1) % 4;
-            status = "Rotation: " + (rotation * 90) + "°";
+            button.setMessage(Text.translatable("screen.colony_schematics.rotate", rotation * 90));
+            status = Text.translatable("screen.colony_schematics.rotation_status", rotation * 90).getString();
         }).dimensions(center - 205, this.height - 35, 125, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal(mirrorLabel()), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.mirror", mirrorLabel()), button -> {
             mirror = (mirror + 1) % 3;
-            button.setMessage(Text.literal(mirrorLabel()));
-            status = "Mirror: " + mirrorLabel();
+            button.setMessage(Text.translatable("screen.colony_schematics.mirror", mirrorLabel()));
+            status = Text.translatable("screen.colony_schematics.mirror_status", mirrorLabel()).getString();
         }).dimensions(center - 65, this.height - 60, 135, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Place (creative)"), button -> {
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.place_creative"), button -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.player == null) return;
             if (!client.player.getAbilities().creativeMode) {
-                status = "Creative mode is required for test placement.";
+                status = Text.translatable("message.colony_schematics.creative_only").getString();
                 return;
             }
             if (entries.isEmpty() || selected < 0 || selected >= entries.size()) {
-                status = "Select a schematic first.";
+                status = Text.translatable("screen.colony_schematics.select_first").getString();
                 return;
             }
             ColonySchematicsClient.requestPlacement(
                     new PlaceSchematicPayload(entries.get(selected).id(), rotation, mirror));
-            status = "Placement request sent to server.";
+            status = Text.translatable("screen.colony_schematics.placement_sent").getString();
         }).dimensions(center - 65, this.height - 35, 135, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Close"), button ->
+        addDrawableChild(ButtonWidget.builder(Text.translatable("screen.colony_schematics.close"), button ->
                 MinecraftClient.getInstance().setScreen(null))
                 .dimensions(center + 85, this.height - 35, 120, 20).build());
 
@@ -88,7 +89,7 @@ public final class SchematicCatalogScreen extends Screen {
     }
 
     private void requestCurrentPage() {
-        status = "Loading catalog…";
+        status = Text.translatable("screen.colony_schematics.loading").getString();
         ColonySchematicsClient.requestCatalog(new RequestSchematicCatalogPayload(page, query));
     }
 
@@ -102,8 +103,8 @@ public final class SchematicCatalogScreen extends Screen {
         totalEntries = Math.max(0, payload.totalEntries());
         if (selected >= entries.size()) selected = Math.max(0, entries.size() - 1);
         status = entries.isEmpty()
-                ? "No blueprints match this search. Backspace clears the search."
-                : "Loaded " + totalEntries + " blueprints. Type to search; Enter refreshes.";
+                ? Text.translatable("screen.colony_schematics.no_matches").getString()
+                : Text.translatable("screen.colony_schematics.loaded", totalEntries).getString();
     }
 
     @Override
@@ -145,12 +146,12 @@ public final class SchematicCatalogScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 8, 0xFFFFFF);
-        String visibleQuery = query.isEmpty() ? "(all blueprints)" : query;
+        String visibleQuery = query.isEmpty() ? Text.translatable("screen.colony_schematics.all_blueprints").getString() : query;
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Search: " + visibleQuery + "  •  " + totalEntries + " blueprints"),
+                Text.translatable("screen.colony_schematics.search_line", visibleQuery, totalEntries),
                 this.width / 2, 25, 0xB8C8D8);
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal("Page " + (page + 1) + " / " + totalPages + "   |   Rotate: " + (rotation * 90) + "°   |   Mirror: " + mirrorLabel()),
+                Text.translatable("screen.colony_schematics.page_line", page + 1, totalPages, rotation * 90, mirrorLabel()),
                 this.width / 2, 43, 0xFFFFFF);
 
         int left = 14;
@@ -175,15 +176,15 @@ public final class SchematicCatalogScreen extends Screen {
 
         if (entries.isEmpty()) {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("No results or waiting for server catalog…"),
+                    Text.translatable("screen.colony_schematics.empty_results"),
                     this.width / 2, LIST_TOP + 30, 0xFFFFFF);
         }
 
         String selectedLabel = entries.isEmpty() || selected >= entries.size()
-                ? "Selected: none"
-                : "Selected: " + entries.get(selected).title();
+                ? Text.translatable("screen.colony_schematics.selected_none").getString()
+                : Text.translatable("screen.colony_schematics.selected", entries.get(selected).title()).getString();
         context.drawCenteredTextWithShadow(this.textRenderer,
-                Text.literal(selectedLabel + "   •   Rotation: " + (rotation * 90) + "°   •   Mirror: " + mirrorLabel()),
+                Text.translatable("screen.colony_schematics.selected_line", selectedLabel, rotation * 90, mirrorLabel()),
                 this.width / 2, this.height - 82, 0xFFFFFF);
         context.drawCenteredTextWithShadow(this.textRenderer,
                 Text.literal(status),
@@ -201,7 +202,7 @@ public final class SchematicCatalogScreen extends Screen {
             int index = row * 2 + col;
             if (index >= 0 && index < entries.size()) {
                 selected = index;
-                status = "Selected " + entries.get(selected).title();
+                status = Text.translatable("screen.colony_schematics.selection_status", entries.get(selected).title()).getString();
                 return true;
             }
         }
@@ -209,11 +210,12 @@ public final class SchematicCatalogScreen extends Screen {
     }
 
     private String mirrorLabel() {
-        return switch (mirror) {
-            case 1 -> "Front/Back";
-            case 2 -> "Left/Right";
-            default -> "Off";
+        String key = switch (mirror) {
+            case 1 -> "screen.colony_schematics.mirror_front_back";
+            case 2 -> "screen.colony_schematics.mirror_left_right";
+            default -> "screen.colony_schematics.mirror_off";
         };
+        return Text.translatable(key).getString();
     }
 
     @Override
