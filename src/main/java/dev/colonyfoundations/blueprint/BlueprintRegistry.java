@@ -155,7 +155,7 @@ public final class BlueprintRegistry implements SimpleSynchronousResourceReloadL
             throw new IllegalArgumentException("invalid or excessive Structurize blueprint dimensions");
         }
 
-        NbtList paletteTag = root.getList("palette", NbtElement.COMPOUND_TYPE)
+        NbtList paletteTag = root.getList("palette")
                 .orElseThrow(() -> new IllegalArgumentException("palette list is missing"));
         if (paletteTag.isEmpty() || paletteTag.size() > 65_535) {
             throw new IllegalArgumentException("palette is empty or too large");
