@@ -103,12 +103,12 @@ public final class ColonyHutBlock extends BlockWithEntity {
     }
 
     @Override
-    public void onStateReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean moved) {
-        if (!state.isOf(newState.getBlock()) && world instanceof ServerWorld serverWorld
+    public void onStateReplaced(BlockState state, ServerWorld world, BlockPos pos, boolean moved) {
+        if (!world.getBlockState(pos).isOf(this)
                 && world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut) {
-            hut.releaseAssignedCitizen(serverWorld);
+            hut.releaseAssignedCitizen(world);
         }
-        super.onStateReplaced(state, world, pos, newState, moved);
+        super.onStateReplaced(state, world, pos, moved);
     }
 
     @Override
