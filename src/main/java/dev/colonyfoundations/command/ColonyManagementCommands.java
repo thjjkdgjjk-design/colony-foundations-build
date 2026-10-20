@@ -25,40 +25,53 @@ public final class ColonyManagementCommands {
     }
 
     public static void register() {
-        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
-                dispatcher.register(literal("colony")
-                        .then(literal("info")
-                                .then(argument("hall", BlockPosArgumentType.blockPos())
-                                        .executes(context -> showInfo(context.getSource(),
-                                                BlockPosArgumentType.getBlockPos(context, "hall")))))
-                        .then(literal("rename")
-                                .then(argument("hall", BlockPosArgumentType.blockPos())
-                                        .then(argument("name", StringArgumentType.greedyString())
-                                                .executes(context -> rename(context.getSource(),
-                                                        BlockPosArgumentType.getBlockPos(context, "hall"),
-                                                        StringArgumentType.getString(context, "name"))))))
-                        .then(literal("invite")
-                                .then(argument("hall", BlockPosArgumentType.blockPos())
-                                        .then(argument("player", EntityArgumentType.player())
-                                                .executes(context -> invite(context.getSource(),
-                                                        BlockPosArgumentType.getBlockPos(context, "hall"),
-                                                        EntityArgumentType.getPlayer(context, "player"))))))
-                        .then(literal("revoke")
-                                .then(argument("hall", BlockPosArgumentType.blockPos())
-                                        .then(argument("player", EntityArgumentType.player())
-                                                .executes(context -> revoke(context.getSource(),
-                                                        BlockPosArgumentType.getBlockPos(context, "hall"),
-                                                        EntityArgumentType.getPlayer(context, "player"))))))
-                        .then(literal("permission")
-                                .then(argument("hall", BlockPosArgumentType.blockPos())
-                                        .then(argument("player", EntityArgumentType.player())
-                                                .then(argument("action", StringArgumentType.word())
-                                                        .then(argument("enabled", BoolArgumentType.bool())
-                                                                .executes(context -> setPermission(context.getSource(),
-                                                                        BlockPosArgumentType.getBlockPos(context, "hall"),
-                                                                        EntityArgumentType.getPlayer(context, "player"),
-                                                                        StringArgumentType.getString(context, "action"),
-                                                                        BoolArgumentType.getBool(context, "enabled")))))))));
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+            var root = literal("colony");
+
+            root.then(literal("info")
+                    .then(argument("hall", BlockPosArgumentType.blockPos())
+                            .executes(context -> showInfo(context.getSource(),
+                                    BlockPosArgumentType.getBlockPos(context, "hall")))));
+
+            root.then(literal("rename")
+                    .then(argument("hall", BlockPosArgumentType.blockPos())
+                            .then(argument("name", StringArgumentType.greedyString())
+                                    .executes(context -> rename(context.getSource(),
+                                            BlockPosArgumentType.getBlockPos(context, "hall"),
+                                            StringArgumentType.getString(context, "name"))))));
+
+            root.then(literal("invite")
+                    .then(argument("hall", BlockPosArgumentType.blockPos())
+                            .then(argument("player", EntityArgumentType.player())
+                                    .executes(context -> invite(context.getSource(),
+                                            BlockPosArgumentType.getBlockPos(context, "hall"),
+                                            EntityArgumentType.getPlayer(context, "player"))))));
+
+            root.then(literal("revoke")
+                    .then(argument("hall", BlockPosArgumentType.blockPos())
+                            .then(argument("player", EntityArgumentType.player())
+                                    .executes(context -> revoke(context.getSource(),
+                                            BlockPosArgumentType.getBlockPos(context, "hall"),
+                                            EntityArgumentType.getPlayer(context, "player"))))));
+
+            var permissionCommand = literal("permission");
+            var permissionHall = argument("hall", BlockPosArgumentType.blockPos());
+            var permissionPlayer = argument("player", EntityArgumentType.player());
+            var permissionAction = argument("action", StringArgumentType.word());
+            var permissionEnabled = argument("enabled", BoolArgumentType.bool());
+            permissionEnabled.executes(context -> setPermission(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    EntityArgumentType.getPlayer(context, "player"),
+                    StringArgumentType.getString(context, "action"),
+                    BoolArgumentType.getBool(context, "enabled")));
+            permissionAction.then(permissionEnabled);
+            permissionPlayer.then(permissionAction);
+            permissionHall.then(permissionPlayer);
+            permissionCommand.then(permissionHall);
+            root.then(permissionCommand);
+
+            dispatcher.register(root);
+        });
     }
 
     private static int showInfo(ServerCommandSource source, BlockPos pos) throws com.mojang.brigadier.exceptions.CommandSyntaxException {

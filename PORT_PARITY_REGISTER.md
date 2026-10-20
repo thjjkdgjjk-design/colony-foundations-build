@@ -96,3 +96,5 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 - Lifecycle follow-up: on villager entity load, an active durable assignment reconstructs its role/building/job tags; a released assignment clears stale assignment tags and retires the tombstone. This follow-up is **Implemented**, pending its own CI run and gameplay test.
 
 - Permission stage (this commit pending CI): per-member action grants persist on the Town Hall and claim record. Protection distinguishes breaks, block interaction and placement targets; project start and citizen assignment use their respective grants. This is **Implemented**, not yet **Verified**; shared rank presets/UI remain unported.
+
+- CI correction log: permission implementation commit `7ecd4e75a6b20fbd7c46266e44cfc6dfa07d1987` failed run [#39511362157](https://github.com/thjjkdgjjk-design/colony-foundations-build/actions/runs/39511362157) at Java parsing in the nested Brigadier command declaration (`ColonyManagementCommands.java:61`). The follow-up rewrites the command tree using named argument builders; the full permission change remains unverified until that follow-up CI succeeds.
