@@ -1,0 +1,7 @@
+{
+  "item.colony_schematics.schematic_tool": "Schematic Tool",
+  "screen.colony_schematics.catalog": "Colony Schematics",
+  "message.colony_schematics.creative_only": "Schematic placement is restricted to Creative mode.",
+  "message.colony_schematics.placed": "Placed %s blocks from a %sx%sx%s schematic.",
+  "message.colony_schematics.failed": "Could not read or place this schematic. See the log for details."
+}
