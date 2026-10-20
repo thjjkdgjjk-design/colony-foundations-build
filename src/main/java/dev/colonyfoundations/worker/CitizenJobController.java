@@ -246,7 +246,7 @@ public final class CitizenJobController {
         }
         return List.copyOf(stacks);
     }
-}
+
 
     private static final int COURIER_SEARCH_RADIUS = 16;
 
