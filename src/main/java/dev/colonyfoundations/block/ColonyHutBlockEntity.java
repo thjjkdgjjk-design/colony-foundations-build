@@ -25,6 +25,7 @@ import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.BlockPos;
 
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -149,6 +150,38 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         if (!isValidTransferId(transferId) || amount < 1 || amount > 64) return false;
         Identifier item = Identifier.tryParse(itemId);
         return item != null && (item + "#" + amount).equals(appliedTransferReceipts.get(transferId));
+    }
+
+    public OptionalInt deliveryReceiptCount(String transferId, String itemId) {
+        if (!isValidTransferId(transferId)) return OptionalInt.empty();
+        Identifier item = Identifier.tryParse(itemId);
+        if (item == null) return OptionalInt.empty();
+        String fingerprint = appliedTransferReceipts.get(transferId);
+        if (fingerprint == null) return OptionalInt.empty();
+        int delimiter = fingerprint.lastIndexOf('#');
+        if (delimiter <= 0 || !fingerprint.substring(0, delimiter).equals(item.toString())) {
+            return OptionalInt.empty();
+        }
+        try {
+            int count = Integer.parseInt(fingerprint.substring(delimiter + 1));
+            return count > 0 && count <= 64 ? OptionalInt.of(count) : OptionalInt.empty();
+        } catch (NumberFormatException ignored) {
+            return OptionalInt.empty();
+        }
+    }
+
+    public OptionalInt outboundTransferCount(String transferId, String itemId) {
+        if (!isValidTransferId(transferId)) return OptionalInt.empty();
+        Identifier item = Identifier.tryParse(itemId);
+        if (item == null) return OptionalInt.empty();
+        TransferReceipt receipt = outboundTransferReceipts.get(transferId);
+        return receipt != null && receipt.itemId().equals(item.toString())
+                && receipt.amount() > 0 && receipt.amount() <= 64
+                ? OptionalInt.of(receipt.amount()) : OptionalInt.empty();
+    }
+
+    public boolean hasOutboundTransferReceipt(String transferId, String itemId) {
+        return outboundTransferCount(transferId, itemId).isPresent();
     }
 
     private static boolean isValidTransferId(String transferId) {

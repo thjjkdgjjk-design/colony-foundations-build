@@ -40,7 +40,11 @@ public final class ColonyRequestState extends PersistentState {
             Codec.STRING.fieldOf("status").forGetter(RequestRecord::status),
             Codec.STRING.optionalFieldOf("courier_uuid", "").forGetter(RequestRecord::courierUuid),
             Codec.LONG.fieldOf("created_at").forGetter(RequestRecord::createdAt),
-            Codec.LONG.fieldOf("updated_at").forGetter(RequestRecord::updatedAt)
+            Codec.LONG.fieldOf("updated_at").forGetter(RequestRecord::updatedAt),
+            Codec.STRING.optionalFieldOf("transfer_id", "").forGetter(RequestRecord::transferId),
+            Codec.STRING.optionalFieldOf("last_transfer_id", "").forGetter(RequestRecord::lastTransferId),
+            Codec.LONG.optionalFieldOf("courier_warehouse_position", 0L)
+                    .forGetter(RequestRecord::courierWarehousePosition)
     ).apply(instance, RequestRecord::new));
 
     private static final Codec<ColonyRequestState> CODEC = Codec.unboundedMap(Codec.STRING, REQUEST_CODEC)
@@ -100,6 +104,22 @@ public final class ColonyRequestState extends PersistentState {
                 .toList();
     }
 
+    public List<RequestRecord> requestsForCourier(UUID colonyOwner, String dimension, UUID courier) {
+        if (colonyOwner == null || dimension == null || courier == null) return List.of();
+        String ownerId = colonyOwner.toString();
+        String courierId = courier.toString();
+        return requests.values().stream()
+                .filter(request -> request.colonyOwnerUuid().equals(ownerId))
+                .filter(request -> request.dimension().equals(dimension))
+                .filter(request -> request.courierUuid().equals(courierId))
+                .filter(request -> request.status().equals(ColonyRequestRules.Status.RESERVED.id())
+                        || request.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id()))
+                .sorted(Comparator.comparingInt(RequestRecord::priority).reversed()
+                        .thenComparingLong(RequestRecord::updatedAt)
+                        .thenComparing(RequestRecord::requestId))
+                .toList();
+    }
+
     /**
      * Coalesces requests for the same item/target/colony while it is active, bounded to
      * MAX_REQUEST_AMOUNT. Returns the durable request ID or empty when input/capacity fails.
@@ -131,14 +151,83 @@ public final class ColonyRequestState extends PersistentState {
         if (activeCount >= MAX_ACTIVE_REQUESTS) return Optional.empty();
         String id = UUID.randomUUID().toString();
         RequestRecord request = new RequestRecord(id, ownerId, dimensionId, target.asLong(), itemId.toString(),
-                amount, 0, priority, ColonyRequestRules.Status.OPEN.id(), "", now, now);
+                amount, 0, priority, ColonyRequestRules.Status.OPEN.id(), "", now, now, "", "", 0L);
         requests.put(id, request);
         markDirty();
         return Optional.of(id);
     }
 
     public Optional<RequestRecord> reserve(String requestId, UUID courier, long now) {
-        return transition(requestId, now, current -> ColonyRequestRules.reserve(current, courier));
+        return reserve(requestId, courier, "", null, now);
+    }
+
+    public Optional<RequestRecord> reserve(String requestId, UUID courier, BlockPos warehouse, long now) {
+        return reserve(requestId, courier, "", warehouse, now);
+    }
+
+    public Optional<RequestRecord> reserve(String requestId, UUID courier, String preferredTransferId,
+                                           BlockPos warehouse, long now) {
+        RequestRecord current = requests.get(requestId);
+        if (current == null || courier == null) return Optional.empty();
+        Optional<ColonyRequestRules.Snapshot> result = ColonyRequestRules.reserve(current.snapshot(), courier);
+        if (result.isEmpty()) return Optional.empty();
+        RequestRecord updated = current.withSnapshot(result.get(), now);
+        String token = isUuid(preferredTransferId) ? preferredTransferId : updated.transferId();
+        if (!isUuid(token)) token = UUID.randomUUID().toString();
+        long warehousePosition = warehouse == null ? updated.courierWarehousePosition() : warehouse.asLong();
+        updated = updated.withCourierTrip(token, updated.lastTransferId(), warehousePosition, now);
+        requests.put(requestId, updated);
+        markDirty();
+        return Optional.of(updated);
+    }
+
+    public Optional<RequestRecord> bindCourierTrip(String requestId, UUID courier, String preferredTransferId,
+                                                   BlockPos warehouse, long now) {
+        RequestRecord current = requests.get(requestId);
+        if (current == null || courier == null
+                || !current.courierUuid().equals(courier.toString())
+                || (!current.status().equals(ColonyRequestRules.Status.RESERVED.id())
+                    && !current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id()))) return Optional.empty();
+        String token = isUuid(current.transferId()) ? current.transferId() : "";
+        if (isUuid(preferredTransferId)) {
+            if (!token.isBlank() && !token.equals(preferredTransferId)) return Optional.empty();
+            token = preferredTransferId;
+        }
+        if (token.isBlank()) token = UUID.randomUUID().toString();
+        long warehousePosition = current.courierWarehousePosition();
+        if (warehouse != null) {
+            if (warehousePosition != 0L && warehousePosition != warehouse.asLong()) return Optional.empty();
+            warehousePosition = warehouse.asLong();
+        }
+        RequestRecord updated = current.withCourierTrip(token, current.lastTransferId(), warehousePosition, now);
+        if (!updated.equals(current)) {
+            requests.put(requestId, updated);
+            markDirty();
+        }
+        return Optional.of(updated);
+    }
+
+    public Optional<RequestRecord> beginDelivery(String requestId, UUID courier, long now) {
+        return transition(requestId, now, current -> ColonyRequestRules.beginDelivery(current, courier));
+    }
+    public Optional<RequestRecord> beginDelivery(String requestId, UUID courier, String transferId, long now) {
+        if (!ownsTransfer(requestId, courier, transferId)) return Optional.empty();
+        return transition(requestId, now, current -> ColonyRequestRules.beginDelivery(current, courier));
+    }
+    public Optional<RequestRecord> release(String requestId, UUID courier, long now) {
+        return transition(requestId, now, current -> ColonyRequestRules.release(current, courier));
+    }
+    public Optional<RequestRecord> release(String requestId, UUID courier, String transferId, long now) {
+        if (!ownsTransfer(requestId, courier, transferId)) return Optional.empty();
+        return transition(requestId, now, current -> ColonyRequestRules.release(current, courier));
+    }
+    public Optional<RequestRecord> recordDelivery(String requestId, UUID courier, int amount, long now) {
+        return transition(requestId, now, current -> ColonyRequestRules.deliver(current, courier, amount));
+    }
+    public Optional<RequestRecord> recordDelivery(String requestId, UUID courier, String transferId,
+                                                  int amount, long now) {
+        if (!ownsTransfer(requestId, courier, transferId)) return Optional.empty();
+        return transition(requestId, now, current -> ColonyRequestRules.deliver(current, courier, amount));
     }
 
     public Optional<RequestRecord> beginDelivery(String requestId, UUID courier, long now) {
@@ -182,6 +271,17 @@ public final class ColonyRequestState extends PersistentState {
                 && request.itemId().equals(itemId.toString()));
     }
 
+    private boolean ownsTransfer(String requestId, UUID courier, String transferId) {
+        RequestRecord current = requests.get(requestId);
+        return current != null && courier != null && isUuid(transferId)
+                && current.courierUuid().equals(courier.toString())
+                && current.transferId().equals(transferId);
+    }
+    private static boolean isUuid(String value) {
+        try { return value != null && !value.isBlank() && UUID.fromString(value) != null; }
+        catch (IllegalArgumentException exception) { return false; }
+    }
+
     private Optional<RequestRecord> transition(
             String requestId, long now,
             java.util.function.Function<ColonyRequestRules.Snapshot, Optional<ColonyRequestRules.Snapshot>> operation) {
@@ -201,7 +301,8 @@ public final class ColonyRequestState extends PersistentState {
 
     public record RequestRecord(String requestId, String colonyOwnerUuid, String dimension, long targetPosition,
                                 String itemId, int requestedCount, int deliveredCount, int priority,
-                                String status, String courierUuid, long createdAt, long updatedAt) {
+                                String status, String courierUuid, long createdAt, long updatedAt,
+                                String transferId, String lastTransferId, long courierWarehousePosition) {
         public RequestRecord {
             requestId = requestId == null ? "" : requestId;
             colonyOwnerUuid = colonyOwnerUuid == null ? "" : colonyOwnerUuid;
@@ -209,6 +310,8 @@ public final class ColonyRequestState extends PersistentState {
             itemId = itemId == null ? "" : itemId;
             status = status == null ? "" : status;
             courierUuid = courierUuid == null ? "" : courierUuid;
+            transferId = transferId == null ? "" : transferId;
+            lastTransferId = lastTransferId == null ? "" : lastTransferId;
         }
 
         public BlockPos target() { return BlockPos.fromLong(targetPosition); }
@@ -226,9 +329,28 @@ public final class ColonyRequestState extends PersistentState {
         }
 
         public RequestRecord withSnapshot(ColonyRequestRules.Snapshot value, long now) {
+            String nextTransferId = transferId;
+            String nextLastTransferId = lastTransferId;
+            long nextWarehousePosition = courierWarehousePosition;
+            if (status.equals(ColonyRequestRules.Status.IN_TRANSIT.id())
+                    && value.delivered() > deliveredCount && isUuid(transferId)) nextLastTransferId = transferId;
+            if (value.status() == ColonyRequestRules.Status.RESERVED
+                    && !status.equals(ColonyRequestRules.Status.RESERVED.id())) {
+                nextTransferId = UUID.randomUUID().toString();
+                nextWarehousePosition = 0L;
+            } else if (value.status() == ColonyRequestRules.Status.OPEN || value.status().terminal()) {
+                nextTransferId = "";
+                nextWarehousePosition = 0L;
+            }
             return new RequestRecord(requestId, colonyOwnerUuid, dimension, targetPosition, itemId,
                     value.requested(), value.delivered(), value.priority(), value.status().id(),
-                    value.courierUuid(), createdAt, now);
+                    value.courierUuid(), createdAt, now, nextTransferId, nextLastTransferId, nextWarehousePosition);
+        }
+        public RequestRecord withCourierTrip(String nextTransferId, String nextLastTransferId,
+                                             long warehousePosition, long now) {
+            return new RequestRecord(requestId, colonyOwnerUuid, dimension, targetPosition, itemId,
+                    requestedCount, deliveredCount, priority, status, courierUuid, createdAt, now,
+                    nextTransferId, nextLastTransferId, warehousePosition);
         }
 
         /** Leave courier metadata for repair so an orphaned claim can be safely released. */
@@ -245,28 +367,27 @@ public final class ColonyRequestState extends PersistentState {
             ColonyRequestRules.Status loaded = ColonyRequestRules.Status.parse(status).orElseThrow();
             ColonyRequestRules.Status repairedStatus = loaded;
             String repairedCourier = courierUuid;
-
+            String repairedTransferId = transferId;
+            String repairedLastTransferId = lastTransferId;
+            long repairedWarehousePosition = courierWarehousePosition;
             if (loaded == ColonyRequestRules.Status.DELIVERED && deliveredCount < requestedCount) {
                 repairedStatus = ColonyRequestRules.Status.OPEN;
             } else if ((loaded == ColonyRequestRules.Status.OPEN
-                    || loaded == ColonyRequestRules.Status.RESERVED
-                    || loaded == ColonyRequestRules.Status.IN_TRANSIT)
+                    || loaded == ColonyRequestRules.Status.RESERVED || loaded == ColonyRequestRules.Status.IN_TRANSIT)
                     && deliveredCount == requestedCount) {
                 repairedStatus = ColonyRequestRules.Status.DELIVERED;
             }
-
-            if ((repairedStatus == ColonyRequestRules.Status.RESERVED
-                    || repairedStatus == ColonyRequestRules.Status.IN_TRANSIT)
-                    && !isValidUuid(repairedCourier)) {
-                repairedStatus = ColonyRequestRules.Status.OPEN;
-            }
-            if (repairedStatus != ColonyRequestRules.Status.RESERVED
-                    && repairedStatus != ColonyRequestRules.Status.IN_TRANSIT) {
+            if ((repairedStatus == ColonyRequestRules.Status.RESERVED || repairedStatus == ColonyRequestRules.Status.IN_TRANSIT)
+                    && !isValidUuid(repairedCourier)) repairedStatus = ColonyRequestRules.Status.OPEN;
+            if (!isValidUuid(repairedLastTransferId)) repairedLastTransferId = "";
+            if (repairedStatus != ColonyRequestRules.Status.RESERVED && repairedStatus != ColonyRequestRules.Status.IN_TRANSIT) {
                 repairedCourier = "";
-            }
+                repairedTransferId = "";
+                repairedWarehousePosition = 0L;
+            } else if (!isValidUuid(repairedTransferId)) repairedTransferId = "";
             return new RequestRecord(requestId, colonyOwnerUuid, dimension, targetPosition, itemId,
                     requestedCount, deliveredCount, priority, repairedStatus.id(), repairedCourier,
-                    createdAt, updatedAt);
+                    createdAt, updatedAt, repairedTransferId, repairedLastTransferId, repairedWarehousePosition);
         }
 
         private static boolean isValidUuid(String raw) {
