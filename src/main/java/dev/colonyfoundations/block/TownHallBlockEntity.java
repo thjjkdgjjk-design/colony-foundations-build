@@ -178,7 +178,8 @@ public final class TownHallBlockEntity extends BlockEntity {
             return;
         }
 
-        boolean resumeSame = blueprintId.equals(newBlueprintId) && progress > 0 && !projectComplete;
+        boolean resumeSame = BuildResumeRules.shouldResume(
+                blueprintId, newBlueprintId, projectActive, progress, projectComplete, projectIssue);
         if (resumeSame) {
             // Resuming a partially built structure must keep its saved orientation and site.
             projectActive = true;
