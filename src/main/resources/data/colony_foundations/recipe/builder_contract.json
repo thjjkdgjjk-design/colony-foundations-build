@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [" PE", " PS", "P  "],
+  "key": {
+    "P": {"item": "minecraft:paper"},
+    "E": {"item": "minecraft:emerald"},
+    "S": {"item": "minecraft:stick"}
+  },
+  "result": {"id": "colony_foundations:builder_contract", "count": 1}
+}
