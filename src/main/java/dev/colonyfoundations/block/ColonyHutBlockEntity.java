@@ -86,7 +86,9 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         villager.addCommandTag(HUT_WORKER_TAG);
         villager.addCommandTag(ownAssignmentTag);
         villager.addCommandTag("colony_foundations_job_" + hutId());
-        villager.setCustomName(Text.literal(displayJobName(hutId())));
+        villager.setCustomName(Text.translatable(
+                "entity.colony_foundations.worker_at",
+                Text.translatable("block.colony_foundations." + hutId())));
         villager.setCustomNameVisible(true);
 
         assignedCitizen = villager.getUuid();
@@ -103,14 +105,6 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
                 .filter(tag -> tag.startsWith("colony_foundations_job_"))
                 .toList()
                 .forEach(villager::removeCommandTag);
-    }
-
-    private static String displayJobName(String hutId) {
-        String raw = hutId.startsWith("hut_") ? hutId.substring(4) : hutId;
-        return java.util.Arrays.stream(raw.split("_"))
-                .filter(part -> !part.isBlank())
-                .map(part -> part.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + part.substring(1))
-                .collect(java.util.stream.Collectors.joining(" "));
     }
 
     public boolean enabled() {

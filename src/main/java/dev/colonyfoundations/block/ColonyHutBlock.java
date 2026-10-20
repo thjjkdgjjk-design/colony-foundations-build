@@ -63,18 +63,18 @@ public final class ColonyHutBlock extends BlockWithEntity {
                     .orElse(null);
 
             if (worker == null) {
-                serverPlayer.sendMessage(Text.literal("[Colony] Рядом нет свободного жителя. Подведите жителя, которого ещё не назначали на здание."), true);
+                serverPlayer.sendMessage(Text.translatable("message.colony_foundations.no_free_worker"), true);
                 return ActionResult.SUCCESS;
             }
             if (!hut.assignWorker(serverWorld, worker)) {
-                serverPlayer.sendMessage(Text.literal("[Colony] Не удалось назначить жителя на эту работу."), true);
+                serverPlayer.sendMessage(Text.translatable("message.colony_foundations.assign_failed"), true);
                 return ActionResult.SUCCESS;
             }
 
             ItemStack contract = serverPlayer.getMainHandStack();
             if (!serverPlayer.getAbilities().creativeMode) contract.decrement(1);
-            serverPlayer.sendMessage(Text.literal("[Colony] " + worker.getName().getString()
-                    + " назначен в здание " + hut.hutId() + "."), false);
+            serverPlayer.sendMessage(Text.translatable(
+                    "message.colony_foundations.worker_assigned", hut.getDisplayName()), false);
             return ActionResult.SUCCESS;
         }
 

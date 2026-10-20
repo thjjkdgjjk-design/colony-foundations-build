@@ -1,5 +1,9 @@
 {
   "block.colony_foundations.town_hall": "Town Hall",
   "item.colony_foundations.builder_contract": "Builder Contract",
-  "item.colony_foundations.worker_contract": "Worker Contract"
+  "item.colony_foundations.worker_contract": "Worker Contract",
+  "entity.colony_foundations.worker_at": "Worker at %s",
+  "message.colony_foundations.no_free_worker": "No unassigned villager is nearby. Bring an available villager to this building.",
+  "message.colony_foundations.assign_failed": "Could not assign this villager to the building.",
+  "message.colony_foundations.worker_assigned": "A villager has been assigned to %s."
 }

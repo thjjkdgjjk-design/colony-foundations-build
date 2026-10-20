@@ -1,5 +1,9 @@
 {
   "block.colony_foundations.town_hall": "Ратуша колонии",
   "item.colony_foundations.builder_contract": "Контракт строителя",
-  "item.colony_foundations.worker_contract": "Контракт рабочего"
+  "item.colony_foundations.worker_contract": "Контракт рабочего",
+  "entity.colony_foundations.worker_at": "Работник: %s",
+  "message.colony_foundations.no_free_worker": "Рядом нет свободного жителя. Подведите к зданию жителя, которому ещё не назначена работа.",
+  "message.colony_foundations.assign_failed": "Не удалось назначить жителя на это здание.",
+  "message.colony_foundations.worker_assigned": "Житель назначен в здание «%s»."
 }

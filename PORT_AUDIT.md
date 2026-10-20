@@ -70,6 +70,8 @@ The separate colony-schematics-addon is the active first workstream: making the 
 - The separate schematic catalog's user-facing strings were moved to English/Russian language keys and the built-in style labels were localized.
 - These source changes are not considered verified until CI completes. No in-game client/server test has been run.
 
+- Russian job labels and worker-assignment messages now use language keys and translate building names rather than exposing registry IDs; this code is pending CI validation.
+
 ## Verification statement
 
 CI compilation proves source compatibility with the compile environment only; it does not prove behavior in Minecraft. The complete MineColonies feature set is not yet ported. Build success and gameplay tests must be tracked separately.
