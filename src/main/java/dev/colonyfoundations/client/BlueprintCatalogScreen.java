@@ -98,6 +98,18 @@ public final class BlueprintCatalogScreen extends Screen {
                 .dimensions(left + 302, top + 179, 124, 20).build());
     }
 
+    public BlockPos previewHallPos() {
+        return hallPos;
+    }
+
+    public Identifier previewBlueprintId() {
+        return ENTRIES.get(selected).id();
+    }
+
+    public int previewRotation() {
+        return rotation;
+    }
+
     private void send(int action) {
         if (client != null && client.getNetworkHandler() != null) {
             ClientPlayNetworking.send(new SetProjectPayload(

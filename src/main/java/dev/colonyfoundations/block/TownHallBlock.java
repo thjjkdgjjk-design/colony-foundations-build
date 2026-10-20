@@ -1,7 +1,6 @@
 package dev.colonyfoundations.block;
 
 import com.mojang.serialization.MapCodec;
-import dev.colonyfoundations.client.ColonyFoundationsClient;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.BlockWithEntity;
@@ -33,7 +32,6 @@ public final class TownHallBlock extends BlockWithEntity {
 
     @Override
     protected ActionResult onUse(BlockState state, World world, BlockPos pos, PlayerEntity player, BlockHitResult hit) {
-        if (world.isClient) ColonyFoundationsClient.openTownHall(pos);
         return ActionResult.SUCCESS;
     }
 
