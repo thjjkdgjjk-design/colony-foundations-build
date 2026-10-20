@@ -52,6 +52,8 @@ public final class TownHallBlockEntity extends BlockEntity {
     private String ownerName = "";
     private String colonyName = "";
     private int colonyLevel = 1;
+    /** Last durable reason construction paused; empty when no known blocker exists. */
+    private String projectIssue = "";
     private final Set<UUID> colonyMembers = new HashSet<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
@@ -66,10 +68,10 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (ownerUuid != null) return;
         ownerUuid = player.getUuid();
         ownerName = player.getName().getString();
-        colonyName = ownerName + "'s Colony";
+        colonyName = "Колония " + ownerName;
         colonyLevel = 1;
         markDirty();
-        player.sendMessage(Text.literal("[Colony] Колония «" + colonyName + "» основана. Ратуша теперь принадлежит вам."), false);
+        player.sendMessage(Text.literal("[Колония] Колония «" + colonyName + "» основана. Ратуша теперь принадлежит вам."), false);
     }
 
     public boolean canManage(PlayerEntity player) {
@@ -77,7 +79,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (ownerUuid != null && (ownerUuid.equals(player.getUuid()) || colonyMembers.contains(player.getUuid()))) {
             return true;
         }
-        player.sendMessage(Text.literal("[Colony] У вас нет прав на управление этой колонией."), true);
+        player.sendMessage(Text.literal("[Колония] У вас нет прав на управление этой колонией."), true);
         return false;
     }
 
@@ -87,7 +89,7 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public String colonyName() {
-        return colonyName.isBlank() ? "Unnamed Colony" : colonyName;
+        return colonyName.isBlank() ? "Колония без названия" : colonyName;
     }
 
     public int colonyLevel() {
@@ -104,12 +106,12 @@ public final class TownHallBlockEntity extends BlockEntity {
 
     public boolean renameColony(ServerPlayerEntity owner, String requestedName) {
         if (!isOwner(owner)) {
-            owner.sendMessage(Text.literal("[Colony] Только владелец может переименовать колонию."), true);
+            owner.sendMessage(Text.literal("[Колония] Только владелец может переименовать колонию."), true);
             return false;
         }
         String safe = requestedName == null ? "" : requestedName.replaceAll("[^\\p{L}\\p{N} _'-]", "").trim();
         if (safe.isBlank() || safe.length() > 32) {
-            owner.sendMessage(Text.literal("[Colony] Имя должно содержать 1–32 допустимых символа."), true);
+            owner.sendMessage(Text.literal("[Колония] Имя должно содержать 1–32 допустимых символа."), true);
             return false;
         }
         colonyName = safe;
@@ -123,8 +125,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         boolean added = colonyMembers.add(target.getUuid());
         if (added) {
             markDirty();
-            target.sendMessage(Text.literal("[Colony] Вас добавили в колонию «" + colonyName() + "»."), false);
-            owner.sendMessage(Text.literal("[Colony] Игрок " + target.getName().getString() + " получил доступ к колонии."), false);
+            target.sendMessage(Text.literal("[Колония] Вас добавили в колонию «" + colonyName() + "»."), false);
+            owner.sendMessage(Text.literal("[Колония] Игрок " + target.getName().getString() + " получил доступ к колонии."), false);
         }
         return added;
     }
@@ -147,11 +149,11 @@ public final class TownHallBlockEntity extends BlockEntity {
     public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
         BlueprintDefinition definition = BlueprintRegistry.getDefinition(newBlueprintId).orElse(null);
         if (definition == null || definition.placements().isEmpty()) {
-            player.sendMessage(Text.literal("[Colony] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
+            player.sendMessage(Text.literal("[Колония] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
             return;
         }
         if ((projectActive || (progress > 0 && !projectComplete)) && !blueprintId.equals(newBlueprintId)) {
-            player.sendMessage(Text.literal("[Colony] Сначала заверши или приостанови текущий проект."), true);
+            player.sendMessage(Text.literal("[Колония] Сначала заверши или приостанови текущий проект."), true);
             return;
         }
 
@@ -159,6 +161,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (resumeSame) {
             // Resuming a partially built structure must keep its saved orientation and site.
             projectActive = true;
+            projectIssue = "";
         } else {
             blueprintId = newBlueprintId;
             rotation = Math.floorMod(quarterTurns, 4);
@@ -166,12 +169,13 @@ public final class TownHallBlockEntity extends BlockEntity {
             siteOffsetZ = clampSiteOffset(requestedOffsetZ);
             progress = 0;
             skippedObstructions = 0;
+            projectIssue = "";
             projectComplete = false;
             projectActive = true;
         }
         markDirty();
         int moved = depositMaterials(player);
-        player.sendMessage(Text.literal("[Colony] Заказано: " + definition.title() + ". Блоков: "
+        player.sendMessage(Text.literal("[Колония] Заказано: " + definition.title() + ". Блоков: "
                 + definition.placements().size() + ". Поворот: " + (rotation * 90)
                 + "°. В склад ратуши добавлено предметов: " + moved + "."), false);
     }
@@ -185,18 +189,18 @@ public final class TownHallBlockEntity extends BlockEntity {
                 siteOffsetZ = clampSiteOffset(requestedOffsetZ);
             }
             int moved = depositMaterials(player);
-            player.sendMessage(Text.literal("[Colony] В ратушу перенесено предметов: " + moved
+            player.sendMessage(Text.literal("[Колония] В ратушу перенесено предметов: " + moved
                     + ". Запас стройки обновлён."), true);
             markDirty();
             return;
         }
         if (projectActive || (progress > 0 && !projectComplete)) {
-            player.sendMessage(Text.literal("[Colony] Нельзя сменить чертёж, пока текущий проект не завершён."), true);
+            player.sendMessage(Text.literal("[Колония] Нельзя сменить чертёж, пока текущий проект не завершён."), true);
             return;
         }
         BlueprintDefinition definition = BlueprintRegistry.getDefinition(requestedBlueprint).orElse(null);
         if (definition == null) {
-            player.sendMessage(Text.literal("[Colony] Чертёж не найден."), true);
+            player.sendMessage(Text.literal("[Колония] Чертёж не найден."), true);
             return;
         }
         blueprintId = requestedBlueprint;
@@ -207,7 +211,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectComplete = false;
         int moved = depositMaterials(player);
         markDirty();
-        player.sendMessage(Text.literal("[Colony] Выбрана схема «" + definition.title()
+        player.sendMessage(Text.literal("[Колония] Выбрана схема «" + definition.title()
                 + "». Перенесено предметов: " + moved + ". Чтобы начать стройку, нажми соответствующую кнопку."), true);
     }
 
@@ -264,21 +268,23 @@ public final class TownHallBlockEntity extends BlockEntity {
         return "Колония: " + colonyName() + " (ур. " + colonyLevel + ")\\nВладелец: "
                 + (ownerName.isBlank() ? "не назначен" : ownerName)
                 + "\\n" + state + "\\nПрогресс: " + Math.min(progress, total) + "/" + total
-                + "\\nСклад: " + stock;
+                + "\\nСклад: " + stock
+                + (projectIssue.isBlank() ? "" : "\\nПричина: " + projectIssue);
     }
 
     public void togglePause(PlayerEntity player) {
         if (projectComplete) {
-            player.sendMessage(Text.literal("[Colony] Проект завершён. Выбери чертёж и начни новый заказ."), true);
+            player.sendMessage(Text.literal("[Колония] Проект завершён. Выбери чертёж и начни новый заказ."), true);
             return;
         }
         if (!projectActive && progress == 0) {
-            player.sendMessage(Text.literal("[Colony] Сначала выбери чертёж и нажми «Начать строительство»."), true);
+            player.sendMessage(Text.literal("[Колония] Сначала выбери чертёж и нажми «Начать строительство»."), true);
             return;
         }
         projectActive = !projectActive;
+        projectIssue = projectActive ? "" : "Приостановлено пользователем";
         markDirty();
-        player.sendMessage(Text.literal("[Colony] Строительство " + (projectActive ? "возобновлено" : "приостановлено")
+        player.sendMessage(Text.literal("[Колония] Строительство " + (projectActive ? "возобновлено" : "приостановлено")
                 + ": " + progress + "/" + currentDefinition().placements().size()), true);
     }
 
@@ -326,33 +332,84 @@ public final class TownHallBlockEntity extends BlockEntity {
         CottageBlueprint.Placement placement = plan.get(hall.progress);
         BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation)
                 .subtract(rotate(definition.primaryOffset(), definition, hall.rotation)));
+
+        // Never force-load or silently write outside the active world bounds.
+        if (target.getY() < serverWorld.getBottomY() || target.getY() >= serverWorld.getTopY()) {
+            hall.pauseForPlacementIssue(serverWorld, pos, target, "Целевая позиция вне высоты измерения");
+            return;
+        }
+        if (!serverWorld.getWorldBorder().contains(target)) {
+            hall.pauseForPlacementIssue(serverWorld, pos, target, "Целевая позиция за границей мира");
+            return;
+        }
+        if (!serverWorld.isChunkLoaded(target)) {
+            hall.pauseForPlacementIssue(serverWorld, pos, target,
+                    "Чанк для строительства не загружен; подойдите к площадке и возобновите заказ");
+            return;
+        }
+
         BlockState oldState = serverWorld.getBlockState(target);
+        BlockState desiredState = rotateState(placement.state(), hall.rotation);
+
+        // If a saved progress counter lagged behind a successful world write, recover safely.
+        if (oldState.equals(desiredState)) {
+            hall.progress++;
+            hall.projectIssue = "";
+            hall.markDirty();
+            if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
+            return;
+        }
+
         if (!(oldState.isAir() || oldState.isReplaceable()) || !oldState.getFluidState().isEmpty()) {
-            hall.skippedObstructions++;
-        } else {
-            Item item = placement.state().getBlock().asItem();
-            if (item != Items.AIR) {
-                Identifier itemId = Registries.ITEM.getId(item);
-                int stock = hall.resourceStock.getOrDefault(itemId, 0);
-                if (stock <= 0) {
-                    hall.notifyMissingResource(serverWorld, pos, item);
-                    return;
-                }
-                if (stock == 1) hall.resourceStock.remove(itemId);
-                else hall.resourceStock.put(itemId, stock - 1);
-            }
-            serverWorld.setBlockState(target, rotateState(placement.state(), hall.rotation), Block.NOTIFY_ALL);
+            hall.pauseForPlacementIssue(serverWorld, pos, target,
+                    "Позиция занята блоком " + Registries.BLOCK.getId(oldState.getBlock()));
+            return;
+        }
+
+        Item item = desiredState.getBlock().asItem();
+        Identifier itemId = item == Items.AIR ? null : Registries.ITEM.getId(item);
+        if (itemId != null && hall.resourceStock.getOrDefault(itemId, 0) <= 0) {
+            hall.notifyMissingResource(serverWorld, pos, item);
+            return;
+        }
+
+        // Consume material only after Minecraft confirms placement.
+        if (!serverWorld.setBlockState(target, desiredState, Block.NOTIFY_ALL)) {
+            hall.pauseForPlacementIssue(serverWorld, pos, target,
+                    "Мир отклонил размещение блока " + Registries.BLOCK.getId(desiredState.getBlock()));
+            return;
+        }
+        if (itemId != null) {
+            int stock = hall.resourceStock.getOrDefault(itemId, 0);
+            if (stock <= 1) hall.resourceStock.remove(itemId);
+            else hall.resourceStock.put(itemId, stock - 1);
         }
 
         hall.progress++;
+        hall.projectIssue = "";
         hall.markDirty();
         if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
+    }
+
+    private void pauseForPlacementIssue(ServerWorld world, BlockPos hallPos, BlockPos target, String reason) {
+        projectActive = false;
+        projectIssue = reason;
+        markDirty();
+        Text message = Text.literal("[Колония] Строительство приостановлено: " + reason
+                + ". Координаты: " + target.getX() + ", " + target.getY() + ", " + target.getZ()
+                + ". Устраните причину и возобновите заказ.");
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5, hallPos.getZ() + 0.5) <= 64.0) {
+                player.sendMessage(message, false);
+            }
+        }
+        ColonyFoundations.LOGGER.warn("Construction paused at hall {}: {} (target {})", hallPos, reason, target);
     }
 
     private void notifyMissingResource(ServerWorld world, BlockPos hallPos, Item item) {
         if (world.getTime() - lastMissingResourceNotification < 100L) return;
         lastMissingResourceNotification = world.getTime();
-        Text message = Text.literal("[Colony] На стройке закончился ресурс: ").append(item.getName())
+        Text message = Text.literal("[Колония] На стройке закончился ресурс: ").append(item.getName())
                 .append(Text.literal(". Пополни ратушу через интерфейс."));
         for (ServerPlayerEntity player : world.getPlayers()) {
             if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5, hallPos.getZ() + 0.5) <= 64.0) {
@@ -424,6 +481,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putString("ColonyOwnerName", ownerName);
         nbt.putString("ColonyName", colonyName);
         nbt.putInt("ColonyLevel", colonyLevel);
+        nbt.putString("ProjectIssue", projectIssue);
         NbtList membersTag = new NbtList();
         colonyMembers.stream().map(UUID::toString).sorted().forEach(member -> membersTag.add(NbtString.of(member)));
         nbt.put("ColonyMembers", membersTag);
@@ -453,6 +511,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         ownerName = nbt.getString("ColonyOwnerName").orElse("");
         colonyName = nbt.getString("ColonyName").orElse("");
         colonyLevel = Math.max(1, nbt.getInt("ColonyLevel").orElse(1));
+        projectIssue = nbt.getString("ProjectIssue").orElse("");
         colonyMembers.clear();
         nbt.getList("ColonyMembers").ifPresent(members -> {
             for (int i = 0; i < members.size(); i++) {
@@ -473,6 +532,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (progress >= max) {
             projectComplete = true;
             projectActive = false;
+            projectIssue = "";
         }
     }
 }

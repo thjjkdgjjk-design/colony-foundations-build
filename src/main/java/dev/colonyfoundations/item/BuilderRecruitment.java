@@ -19,19 +19,19 @@ public final class BuilderRecruitment {
 
             if (world.isClient) return ActionResult.SUCCESS;
             if (villager.getCommandTags().contains(TownHallBlockEntity.BUILDER_TAG)) {
-                player.sendMessage(Text.literal("[Colony] Этот житель уже нанят строителем."), true);
+                player.sendMessage(Text.literal("[Колония] Этот житель уже нанят строителем."), true);
                 return ActionResult.SUCCESS;
             }
 
             if (!villager.addCommandTag(TownHallBlockEntity.BUILDER_TAG)) {
-                player.sendMessage(Text.literal("[Colony] Не удалось назначить роль строителя."), true);
+                player.sendMessage(Text.literal("[Колония] Не удалось назначить роль строителя."), true);
                 return ActionResult.FAIL;
             }
 
-            villager.setCustomName(Text.literal("Builder"));
+            villager.setCustomName(Text.literal("Строитель"));
             villager.setCustomNameVisible(true);
             if (!player.getAbilities().creativeMode) held.decrement(1);
-            player.sendMessage(Text.literal("[Colony] Житель нанят строителем. Поставьте Town Hall и нажмите ПКМ, чтобы заказать коттедж."), false);
+            player.sendMessage(Text.literal("[Колония] Житель нанят строителем. Поставьте Town Hall и нажмите ПКМ, чтобы заказать коттедж."), false);
             return ActionResult.SUCCESS;
         });
     }
