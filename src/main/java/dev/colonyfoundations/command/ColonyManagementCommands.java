@@ -3,6 +3,7 @@ package dev.colonyfoundations.command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import dev.colonyfoundations.block.ColonyPermission;
+import dev.colonyfoundations.block.ColonyRank;
 import dev.colonyfoundations.block.TownHallBlockEntity;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.server.command.CommandManager;
