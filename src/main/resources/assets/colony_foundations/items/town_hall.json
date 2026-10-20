@@ -1,0 +1,6 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "colony_foundations:item/town_hall"
+  }
+}
