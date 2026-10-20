@@ -54,24 +54,6 @@ public final class BlueprintCatalogScreen extends Screen {
         this.hallPos = hallPos.toImmutable();
     }
 
-    private static List<Entry> makeEntries() {
-        List<Entry> result = new ArrayList<>();
-        result.add(new Entry("Стартовый коттедж", Identifier.of("colony_foundations", "cottage")));
-        addStyle(result, "birch", "Берёза");
-        addStyle(result, "darkoak", "Тёмный дуб");
-        addStyle(result, "defaultwooden", "Дерево");
-        addStyle(result, "stone", "Камень");
-        return List.copyOf(result);
-    }
-
-    private static void addStyle(List<Entry> result, String style, String title) {
-        for (int tier = 1; tier <= 5; tier++) {
-            result.add(new Entry(title + " — дом жителя " + tier,
-                    Identifier.of("colony_foundations",
-                            "minecolonies/" + style + "/buildings/citizen/citizen" + tier)));
-        }
-    }
-
     @Override
     protected void init() {
         super.init();
