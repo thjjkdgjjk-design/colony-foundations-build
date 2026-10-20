@@ -14,6 +14,15 @@ public final class ModBlockEntities {
             FabricBlockEntityTypeBuilder.create(TownHallBlockEntity::new, ModBlocks.TOWN_HALL).build()
     );
 
+    public static final BlockEntityType<ColonyHutBlockEntity> COLONY_HUT = Registry.register(
+            Registries.BLOCK_ENTITY_TYPE,
+            Identifier.of(ColonyFoundations.MOD_ID, "colony_hut"),
+            FabricBlockEntityTypeBuilder.create(
+                    ColonyHutBlockEntity::new,
+                    ModHuts.blocks().toArray(ColonyHutBlock[]::new)
+            ).build()
+    );
+
     private ModBlockEntities() { }
 
     public static void initialize() {
