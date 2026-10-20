@@ -9,13 +9,17 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
 /** Server response for the construction status panel in the catalog. */
-public record ProjectStatusPayload(BlockPos hallPos, String statusText) implements CustomPayload {
+public record ProjectStatusPayload(
+        BlockPos hallPos, String statusText, int siteOffsetX, int siteOffsetZ
+) implements CustomPayload {
     public static final Id<ProjectStatusPayload> ID =
             new Id<>(Identifier.of(ColonyFoundations.MOD_ID, "project_status"));
 
     public static final PacketCodec<RegistryByteBuf, ProjectStatusPayload> CODEC = PacketCodec.tuple(
             BlockPos.PACKET_CODEC, ProjectStatusPayload::hallPos,
             PacketCodecs.STRING, ProjectStatusPayload::statusText,
+            PacketCodecs.VAR_INT, ProjectStatusPayload::siteOffsetX,
+            PacketCodecs.VAR_INT, ProjectStatusPayload::siteOffsetZ,
             ProjectStatusPayload::new
     );
 

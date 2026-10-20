@@ -4,8 +4,8 @@ import dev.colonyfoundations.blueprint.BlueprintDefinition;
 import dev.colonyfoundations.blueprint.CottageBlueprint;
 import dev.colonyfoundations.network.RequestProjectStatusPayload;
 import dev.colonyfoundations.network.SetProjectPayload;
-import net.minecraft.block.BlockState;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -19,7 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** In-game schematic catalog, 2D preview, material summary and live colony status. */
+/** In-game blueprint catalog, preview, material summary and live project controls. */
 public final class BlueprintCatalogScreen extends Screen {
     private record Entry(String label, Identifier id) { }
     private static final List<Entry> ENTRIES = makeEntries();
@@ -32,6 +32,9 @@ public final class BlueprintCatalogScreen extends Screen {
     private int left;
     private int top;
     private int statusPollTicks;
+    private boolean siteTouched;
+    private int siteOffsetX = 5;
+    private int siteOffsetZ = -3;
     private String serverStatus = "Статус загружается...";
 
     public BlueprintCatalogScreen(BlockPos hallPos) {
@@ -61,7 +64,7 @@ public final class BlueprintCatalogScreen extends Screen {
     protected void init() {
         super.init();
         left = width / 2 - 220;
-        top = height / 2 - 122;
+        top = height / 2 - 142;
 
         int start = page * PAGE_SIZE;
         int end = Math.min(ENTRIES.size(), start + PAGE_SIZE);
@@ -83,21 +86,28 @@ public final class BlueprintCatalogScreen extends Screen {
             clearAndInit();
         }).dimensions(left + 168, top + 128, 32, 20).build());
 
+        addDrawableChild(ButtonWidget.builder(Text.literal("←"), button -> moveSite(-2, 0))
+                .dimensions(left + 10, top + 164, 40, 18).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("→"), button -> moveSite(2, 0))
+                .dimensions(left + 54, top + 164, 40, 18).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("↑"), button -> moveSite(0, -2))
+                .dimensions(left + 98, top + 164, 40, 18).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("↓"), button -> moveSite(0, 2))
+                .dimensions(left + 142, top + 164, 40, 18).build());
+
         addDrawableChild(ButtonWidget.builder(Text.literal("Поворот: " + rotation * 90 + "°"), button -> {
             rotation = (rotation + 1) % 4;
             clearAndInit();
-        }).dimensions(left + 10, top + 153, 190, 20).build());
+        }).dimensions(left + 10, top + 188, 190, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.literal("Начать строительство"), button -> {
-            send(1);
-        }).dimensions(left + 212, top + 153, 214, 20).build());
-
-        addDrawableChild(ButtonWidget.builder(Text.literal("Снабдить из инвентаря"), button -> send(3))
-                .dimensions(left + 10, top + 207, 140, 20).build());
-        addDrawableChild(ButtonWidget.builder(Text.literal("Пауза / продолжить"), button -> send(2))
-                .dimensions(left + 156, top + 207, 140, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Строить"), button -> send(1))
+                .dimensions(left + 10, top + 260, 100, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Снабдить"), button -> send(3))
+                .dimensions(left + 116, top + 260, 100, 20).build());
+        addDrawableChild(ButtonWidget.builder(Text.literal("Пауза"), button -> send(2))
+                .dimensions(left + 222, top + 260, 100, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("Закрыть"), button -> close())
-                .dimensions(left + 302, top + 207, 124, 20).build());
+                .dimensions(left + 328, top + 260, 102, 20).build());
 
         requestStatus();
     }
@@ -117,8 +127,19 @@ public final class BlueprintCatalogScreen extends Screen {
         }
     }
 
-    public void updateStatus(String statusText) {
+    private void moveSite(int dx, int dz) {
+        siteOffsetX = Math.max(-64, Math.min(64, siteOffsetX + dx));
+        siteOffsetZ = Math.max(-64, Math.min(64, siteOffsetZ + dz));
+        siteTouched = true;
+        clearAndInit();
+    }
+
+    public void updateStatus(String statusText, int serverOffsetX, int serverOffsetZ) {
         serverStatus = statusText == null ? "Статус недоступен" : statusText;
+        if (!siteTouched) {
+            siteOffsetX = serverOffsetX;
+            siteOffsetZ = serverOffsetZ;
+        }
     }
 
     public BlockPos previewHallPos() {
@@ -133,18 +154,27 @@ public final class BlueprintCatalogScreen extends Screen {
         return rotation;
     }
 
+    public int previewSiteOffsetX() {
+        return siteOffsetX;
+    }
+
+    public int previewSiteOffsetZ() {
+        return siteOffsetZ;
+    }
+
     private void send(int action) {
         if (client != null && client.getNetworkHandler() != null) {
             ClientPlayNetworking.send(new SetProjectPayload(
-                    hallPos, ENTRIES.get(selected).id(), rotation, action));
+                    hallPos, ENTRIES.get(selected).id(), rotation, siteOffsetX, siteOffsetZ, action));
+            if (action == 1 || action == 3) siteTouched = false;
         }
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context, mouseX, mouseY, delta);
-        context.fill(left, top, left + 440, top + 242, 0xE6111720);
-        context.drawBorder(left, top, 440, 242, 0xFF6F879D);
+        context.fill(left, top, left + 440, top + 284, 0xE6111720);
+        context.drawBorder(left, top, 440, 284, 0xFF6F879D);
         context.drawCenteredTextWithShadow(textRenderer, title, width / 2, top + 8, 0xFFFFFFFF);
         context.drawTextWithShadow(textRenderer, Text.literal("СХЕМЫ"), left + 12, top + 23, 0xFFB9C9D8);
         context.drawTextWithShadow(textRenderer, Text.literal("ПРЕДПРОСМОТР И МАТЕРИАЛЫ"),
@@ -152,6 +182,8 @@ public final class BlueprintCatalogScreen extends Screen {
         context.drawCenteredTextWithShadow(textRenderer,
                 Text.literal("Страница " + (page + 1) + " / " + ((ENTRIES.size() + PAGE_SIZE - 1) / PAGE_SIZE)),
                 left + 105, top + 135, 0xFFB9C9D8);
+        context.drawTextWithShadow(textRenderer,
+                Text.literal("Площадка: " + siteOffsetX + ", " + siteOffsetZ), left + 12, top + 151, 0xFFB9C9D8);
 
         Entry entry = ENTRIES.get(selected);
         BlueprintDefinition definition = ColonyFoundationsClient.preview(entry.id());
@@ -163,7 +195,6 @@ public final class BlueprintCatalogScreen extends Screen {
         context.fill(previewLeft, top + 34, left + 427, top + 145, 0xFF202A33);
         context.drawBorder(previewLeft, top + 34, 213, 111, 0xFF536879);
         context.drawTextWithShadow(textRenderer, Text.literal(entry.label()), previewLeft + 6, top + 40, 0xFFFFFFFF);
-
         if (definition != null) {
             context.drawTextWithShadow(textRenderer,
                     Text.literal("Размер: " + definition.sizeX() + " × " + definition.sizeY() + " × " + definition.sizeZ()),
@@ -178,15 +209,14 @@ public final class BlueprintCatalogScreen extends Screen {
                     Text.literal("Схему нельзя прочитать"), previewLeft + 6, top + 60, 0xFFFF7777);
         }
 
+        context.drawTextWithShadow(textRenderer, Text.literal("Статус колонии"), left + 12, top + 212, 0xFFB9C9D8);
         String[] lines = serverStatus.split("\\n");
         for (int i = 0; i < Math.min(3, lines.length); i++) {
             String line = lines[i];
             if (line.length() > 26) line = line.substring(0, 25) + "…";
-            context.drawTextWithShadow(textRenderer, Text.literal(line), left + 12, top + 181 + i * 10,
+            context.drawTextWithShadow(textRenderer, Text.literal(line), left + 12, top + 225 + i * 10,
                     i == 0 ? 0xFF9CE6B0 : 0xFFD6E2EA);
         }
-        context.drawTextWithShadow(textRenderer,
-                Text.literal("Статус колонии"), left + 12, top + 167, 0xFFB9C9D8);
         super.render(context, mouseX, mouseY, delta);
     }
 

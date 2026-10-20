@@ -8,7 +8,6 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.World;
 
 public final class ProjectNetworking {
     private ProjectNetworking() { }
@@ -34,7 +33,10 @@ public final class ProjectNetworking {
             sendStatus(player, pos);
             return;
         }
-        if ((payload.action() != 1 && payload.action() != 3) || payload.rotation() < 0 || payload.rotation() > 3) return;
+        if ((payload.action() != 1 && payload.action() != 3)
+                || payload.rotation() < 0 || payload.rotation() > 3
+                || payload.siteOffsetX() < -64 || payload.siteOffsetX() > 64
+                || payload.siteOffsetZ() < -64 || payload.siteOffsetZ() > 64) return;
         if (BlueprintRegistry.getDefinition(payload.blueprintId()).isEmpty()) {
             player.sendMessage(Text.literal("Чертёж не найден. Перезапустите мир или проверьте ресурсы мода."), true);
             ColonyFoundations.LOGGER.warn("Player {} requested missing blueprint {}",
@@ -43,9 +45,11 @@ public final class ProjectNetworking {
             return;
         }
         if (payload.action() == 3) {
-            hall.depositForSelectedProject(payload.blueprintId(), payload.rotation(), player);
+            hall.depositForSelectedProject(payload.blueprintId(), payload.rotation(),
+                    payload.siteOffsetX(), payload.siteOffsetZ(), player);
         } else {
-            hall.startProject(payload.blueprintId(), payload.rotation(), player);
+            hall.startProject(payload.blueprintId(), payload.rotation(),
+                    payload.siteOffsetX(), payload.siteOffsetZ(), player);
         }
         sendStatus(player, pos);
     }
@@ -53,7 +57,8 @@ public final class ProjectNetworking {
     private static void sendStatus(ServerPlayerEntity player, BlockPos pos) {
         if (!isNear(player, pos)) return;
         if (!(player.getWorld().getBlockEntity(pos) instanceof TownHallBlockEntity hall)) return;
-        ServerPlayNetworking.send(player, new ProjectStatusPayload(pos, hall.statusForScreen()));
+        ServerPlayNetworking.send(player, new ProjectStatusPayload(
+                pos, hall.statusForScreen(), hall.siteOffsetX(), hall.siteOffsetZ()));
     }
 
     private static boolean isNear(ServerPlayerEntity player, BlockPos pos) {

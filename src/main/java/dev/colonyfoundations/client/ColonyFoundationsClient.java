@@ -37,7 +37,7 @@ public final class ColonyFoundationsClient implements ClientModInitializer {
                 context.client().execute(() -> {
                     if (MinecraftClient.getInstance().currentScreen instanceof BlueprintCatalogScreen screen
                             && screen.previewHallPos().equals(payload.hallPos())) {
-                        screen.updateStatus(payload.statusText());
+                        screen.updateStatus(payload.statusText(), payload.siteOffsetX(), payload.siteOffsetZ());
                     }
                 }));
     }

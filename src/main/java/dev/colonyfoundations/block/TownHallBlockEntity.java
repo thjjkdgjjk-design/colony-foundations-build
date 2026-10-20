@@ -40,13 +40,23 @@ public final class TownHallBlockEntity extends BlockEntity {
     private long lastMissingResourceNotification = -1000L;
     private Identifier blueprintId = Identifier.of(ColonyFoundations.MOD_ID, "cottage");
     private int rotation;
+    private int siteOffsetX = 5;
+    private int siteOffsetZ = -3;
     private final Map<Identifier, Integer> resourceStock = new HashMap<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.TOWN_HALL, pos, state);
     }
 
-    public void startProject(Identifier newBlueprintId, int quarterTurns, PlayerEntity player) {
+    public int siteOffsetX() {
+        return siteOffsetX;
+    }
+
+    public int siteOffsetZ() {
+        return siteOffsetZ;
+    }
+
+    public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
         BlueprintDefinition definition = BlueprintRegistry.getDefinition(newBlueprintId).orElse(null);
         if (definition == null || definition.placements().isEmpty()) {
             player.sendMessage(Text.literal("[Colony] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
@@ -59,11 +69,13 @@ public final class TownHallBlockEntity extends BlockEntity {
 
         boolean resumeSame = blueprintId.equals(newBlueprintId) && progress > 0 && !projectComplete;
         if (resumeSame) {
-            rotation = Math.floorMod(quarterTurns, 4);
+            // Resuming a partially built structure must keep its saved orientation and site.
             projectActive = true;
         } else {
             blueprintId = newBlueprintId;
             rotation = Math.floorMod(quarterTurns, 4);
+            siteOffsetX = clampSiteOffset(requestedOffsetX);
+            siteOffsetZ = clampSiteOffset(requestedOffsetZ);
             progress = 0;
             skippedObstructions = 0;
             projectComplete = false;
@@ -76,9 +88,14 @@ public final class TownHallBlockEntity extends BlockEntity {
                 + "°. В склад ратуши добавлено предметов: " + moved + "."), false);
     }
 
-    public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation, ServerPlayerEntity player) {
+    public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation,
+                                          int requestedOffsetX, int requestedOffsetZ, ServerPlayerEntity player) {
         if (blueprintId.equals(requestedBlueprint)) {
-            rotation = Math.floorMod(requestedRotation, 4);
+            if (!projectActive && progress == 0 && !projectComplete) {
+                rotation = Math.floorMod(requestedRotation, 4);
+                siteOffsetX = clampSiteOffset(requestedOffsetX);
+                siteOffsetZ = clampSiteOffset(requestedOffsetZ);
+            }
             int moved = depositMaterials(player);
             player.sendMessage(Text.literal("[Colony] В ратушу перенесено предметов: " + moved
                     + ". Запас стройки обновлён."), true);
@@ -96,6 +113,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         }
         blueprintId = requestedBlueprint;
         rotation = Math.floorMod(requestedRotation, 4);
+        siteOffsetX = clampSiteOffset(requestedOffsetX);
+        siteOffsetZ = clampSiteOffset(requestedOffsetZ);
         progress = 0;
         projectComplete = false;
         int moved = depositMaterials(player);
@@ -201,7 +220,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             builder.addCommandTag(assignmentTag);
         }
 
-        BlockPos site = pos.add(5, -1, -3);
+        BlockPos site = pos.add(hall.siteOffsetX, -1, hall.siteOffsetZ);
         int rotatedWidth = (hall.rotation & 1) == 0 ? definition.sizeX() : definition.sizeZ();
         int rotatedDepth = (hall.rotation & 1) == 0 ? definition.sizeZ() : definition.sizeX();
         BlockPos workSpot = site.add(rotatedWidth + 1, 1, rotatedDepth / 2);
@@ -249,6 +268,10 @@ public final class TownHallBlockEntity extends BlockEntity {
                 player.sendMessage(message, false);
             }
         }
+    }
+
+    private static int clampSiteOffset(int value) {
+        return Math.max(-64, Math.min(64, value));
     }
 
     private static BlockPos rotate(BlockPos source, BlueprintDefinition definition, int turns) {
@@ -304,6 +327,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putInt("SkippedObstructions", skippedObstructions);
         nbt.putString("BlueprintId", blueprintId.toString());
         nbt.putInt("Rotation", rotation);
+        nbt.putInt("SiteOffsetX", siteOffsetX);
+        nbt.putInt("SiteOffsetZ", siteOffsetZ);
         NbtCompound stockTag = new NbtCompound();
         resourceStock.forEach((id, amount) -> stockTag.putInt(id.toString(), amount));
         nbt.put("ResourceStock", stockTag);
@@ -319,6 +344,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         Identifier parsed = Identifier.tryParse(nbt.getString("BlueprintId").orElse("colony_foundations:cottage"));
         blueprintId = parsed == null ? Identifier.of("colony_foundations", "cottage") : parsed;
         rotation = Math.floorMod(nbt.getInt("Rotation").orElse(0), 4);
+        siteOffsetX = clampSiteOffset(nbt.getInt("SiteOffsetX").orElse(5));
+        siteOffsetZ = clampSiteOffset(nbt.getInt("SiteOffsetZ").orElse(-3));
         resourceStock.clear();
         nbt.getCompound("ResourceStock").ifPresent(stockTag -> stockTag.getKeys().forEach(key -> {
             Identifier itemId = Identifier.tryParse(key);

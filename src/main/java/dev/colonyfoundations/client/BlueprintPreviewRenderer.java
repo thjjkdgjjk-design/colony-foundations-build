@@ -36,7 +36,8 @@ public final class BlueprintPreviewRenderer {
         VertexConsumerProvider consumers = context.consumers();
         VertexConsumer lines = consumers.getBuffer(RenderLayer.getLines());
         Vec3d camera = context.camera().getPos();
-        BlockPos origin = screen.previewHallPos().add(5, -1, -3);
+        BlockPos origin = screen.previewHallPos().add(
+                screen.previewSiteOffsetX(), -1, screen.previewSiteOffsetZ());
 
         matrices.push();
         matrices.translate(origin.getX() - camera.x, origin.getY() - camera.y, origin.getZ() - camera.z);
