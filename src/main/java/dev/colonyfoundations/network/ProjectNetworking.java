@@ -2,6 +2,7 @@ package dev.colonyfoundations.network;
 
 import dev.colonyfoundations.ColonyFoundations;
 import dev.colonyfoundations.block.TownHallBlockEntity;
+import dev.colonyfoundations.block.ColonyPermission;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -52,7 +53,8 @@ public final class ProjectNetworking {
         BlockPos pos = payload.hallPos();
         if (!isNear(player, pos)) return;
         if (!(player.getWorld().getBlockEntity(pos) instanceof TownHallBlockEntity hall)) return;
-        if (!hall.canManage(player)) {
+        if (!hall.canManage(player) || !hall.canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
             sendStatus(player, pos);
             return;
         }

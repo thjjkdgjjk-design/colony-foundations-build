@@ -24,7 +24,8 @@ The owner can manage the currently persisted Town Hall colony from within 8 bloc
 
 - `/colony info <x> <y> <z>` — show colony name, owner, level and member count (owner/member).
 - `/colony rename <x> <y> <z> <new name>` — rename the colony (owner only).
-- `/colony invite <x> <y> <z> <online player>` — grant membership (owner only).
-- `/colony revoke <x> <y> <z> <online player>` — revoke membership (owner only).
+- `/colony invite <x> <y> <z> <online player>` — grant membership (owner or a member with `manage_members`). New members start with no action grants.
+- `/colony revoke <x> <y> <z> <online player>` — revoke membership (owner or a member with `manage_members`).
+- `/colony permission <x> <y> <z> <online player> <action> <true|false>` — owner changes one of `break_blocks`, `place_blocks`, `use_blocks`, `manage_members`, `build_projects`, `assign_workers`.
 
-This command workflow is an incremental addition, not a claim of full MineColonies permission parity. Build/CI and in-game multiplayer testing for this feature are still pending.
+This is an incremental per-member action model. MineColonies shared rank presets, permission GUI, full event semantics and gameplay parity are not implemented yet; run CI and test in a disposable multiplayer world.

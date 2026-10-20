@@ -229,10 +229,15 @@ public final class TownHallBlockEntity extends BlockEntity {
         return siteOffsetZ;
     }
 
+    public boolean canPerformColonyAction(PlayerEntity player, ColonyPermission permission) {
+        if (player == null || permission == null
+                || !(player.getWorld() instanceof ServerWorld serverWorld) || colonyUuid == null) return false;
+        return ColonyClaimState.get(serverWorld).findColony(colonyUuid)
+                .filter(claim -> claim.canPerform(player.getUuid(), permission)).isPresent();
+    }
+
     public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
-        if (!(player.getWorld() instanceof ServerWorld serverWorld) || colonyUuid == null
-                || ColonyClaimState.get(serverWorld).findColony(colonyUuid)
-                        .filter(claim -> claim.canPerform(player.getUuid(), ColonyPermission.BUILD_PROJECTS)).isEmpty()) {
+        if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
             player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
             return;
         }
@@ -273,6 +278,10 @@ public final class TownHallBlockEntity extends BlockEntity {
 
     public void depositForSelectedProject(Identifier requestedBlueprint, int requestedRotation,
                                           int requestedOffsetX, int requestedOffsetZ, ServerPlayerEntity player) {
+        if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
+            return;
+        }
         if (blueprintId.equals(requestedBlueprint)) {
             BlueprintDefinition selectedDefinition = BlueprintRegistry.getBuildDefinition(requestedBlueprint).orElse(null);
             if (selectedDefinition == null) {
@@ -388,6 +397,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public void togglePause(PlayerEntity player) {
+        if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
+            return;
+        }
         if (projectComplete) {
             player.sendMessage(Text.literal("[Колония] Проект завершён. Выбери чертёж и начни новый заказ."), true);
             return;
