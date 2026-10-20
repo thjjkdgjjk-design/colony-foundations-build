@@ -140,46 +140,12 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return remaining == 0;
     }
 
-    public boolean hasItem(String itemId) {
-        Identifier id = Identifier.tryParse(itemId);
-        if (id == null || !Registries.ITEM.containsId(id)) return false;
-        for (ItemStack stack : inventory) {
-            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).equals(id)) return true;
-        }
-        return false;
-    }
+    
 
-    public boolean hasItemPathSuffix(String suffix) {
-        if (suffix == null || suffix.isEmpty()) return false;
-        for (ItemStack stack : inventory) {
-            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).getPath().endsWith(suffix)) return true;
-        }
-        return false;
-    }
+    
 
     /** Consume stock only after callers validate the associated world mutation. */
-    public boolean consumeItem(String itemId, int amount) {
-        if (amount <= 0 || !hasItem(itemId)) return false;
-        int available = 0;
-        for (ItemStack stack : inventory) {
-            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
-                available += stack.getCount();
-            }
-        }
-        if (available < amount) return false;
-
-        int remaining = amount;
-        for (int slot = 0; slot < inventory.size() && remaining > 0; slot++) {
-            ItemStack stack = inventory.get(slot);
-            if (stack.isEmpty() || !Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) continue;
-            int moved = Math.min(remaining, stack.getCount());
-            stack.decrement(moved);
-            remaining -= moved;
-            if (stack.isEmpty()) inventory.set(slot, ItemStack.EMPTY);
-        }
-        markDirty();
-        return remaining == 0;
-    }
+    
 
     private static boolean insertInto(List<ItemStack> slots, ItemStack incoming) {
         for (int i = 0; i < slots.size() && !incoming.isEmpty(); i++) {
