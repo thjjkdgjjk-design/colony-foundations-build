@@ -231,7 +231,7 @@ public final class ColonySchematics implements ModInitializer {
             blockEntitiesPlaced++;
         }
 
-        int entitiesPlaced = placeEntities(world, schematic, origin, turns);
+        int entitiesPlaced = placeEntities(world, schematic, origin, turns, mirrorMode);
         player.sendMessage(Text.translatable("message.colony_schematics.placed",
                 placed, schematic.sizeX(), schematic.sizeY(), schematic.sizeZ()), false);
         player.sendMessage(Text.translatable("message.colony_schematics.placement_details",
@@ -243,7 +243,7 @@ public final class ColonySchematics implements ModInitializer {
     }
 
     private static int placeEntities(ServerWorld world, SchematicLoader.Schematic schematic,
-                                     BlockPos origin, int turns) {
+                                     BlockPos origin, int turns, int mirrorMode) {
         int placed = 0;
         for (NbtCompound original : schematic.entities()) {
             NbtCompound data = original.copy();
