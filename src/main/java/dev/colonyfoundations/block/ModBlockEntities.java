@@ -1,6 +1,7 @@
 package dev.colonyfoundations.block;
 
 import dev.colonyfoundations.ColonyFoundations;
+import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -10,7 +11,7 @@ public final class ModBlockEntities {
     public static final BlockEntityType<TownHallBlockEntity> TOWN_HALL = Registry.register(
             Registries.BLOCK_ENTITY_TYPE,
             Identifier.of(ColonyFoundations.MOD_ID, "town_hall"),
-            BlockEntityType.Builder.create(TownHallBlockEntity::new, ModBlocks.TOWN_HALL).build()
+            FabricBlockEntityTypeBuilder.create(TownHallBlockEntity::new, ModBlocks.TOWN_HALL).build()
     );
 
     private ModBlockEntities() { }
