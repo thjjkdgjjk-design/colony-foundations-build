@@ -207,6 +207,32 @@ public final class ColonyRequestState extends PersistentState {
         return Optional.of(updated);
     }
 
+    /**
+     * Transfers a persisted trip to the replacement worker assigned to the same courier hut.
+     * The caller must prove the hut still owns this task and its exact transfer token.
+     */
+    public Optional<RequestRecord> reassignCourier(String requestId, UUID previousCourier, UUID nextCourier,
+                                                   String transferId, long now) {
+        RequestRecord current = requests.get(requestId);
+        if (current == null || previousCourier == null || nextCourier == null
+                || previousCourier.equals(nextCourier) || !isUuid(transferId)
+                || !current.courierUuid().equals(previousCourier.toString())
+                || !current.transferId().equals(transferId)
+                || current.lastTransferId().equals(transferId)
+                || (!current.status().equals(ColonyRequestRules.Status.RESERVED.id())
+                    && !current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id()))) {
+            return Optional.empty();
+        }
+        RequestRecord updated = new RequestRecord(current.requestId(), current.colonyOwnerUuid(),
+                current.dimension(), current.targetPosition(), current.itemId(), current.requestedCount(),
+                current.deliveredCount(), current.priority(), current.status(), nextCourier.toString(),
+                current.createdAt(), now, current.transferId(), current.lastTransferId(),
+                current.courierWarehousePosition());
+        requests.put(requestId, updated);
+        markDirty();
+        return Optional.of(updated);
+    }
+
     public Optional<RequestRecord> beginDelivery(String requestId, UUID courier, long now) {
         return transition(requestId, now, current -> ColonyRequestRules.beginDelivery(current, courier));
     }
