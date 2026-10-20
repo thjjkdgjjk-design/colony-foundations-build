@@ -13,7 +13,6 @@ public record SchematicCatalogPayload(
         int page,
         String query,
         int totalPages,
-        int totalEntries,
         ArrayList<Entry> entries
 ) implements CustomPayload {
     public static final int PAGE_SIZE = 20;
@@ -34,7 +33,6 @@ public record SchematicCatalogPayload(
             PacketCodecs.VAR_INT, SchematicCatalogPayload::page,
             PacketCodecs.string(128), SchematicCatalogPayload::query,
             PacketCodecs.VAR_INT, SchematicCatalogPayload::totalPages,
-            PacketCodecs.VAR_INT, SchematicCatalogPayload::totalEntries,
             PacketCodecs.collection(ArrayList::new, Entry.CODEC, MAX_PACKET_ENTRIES),
             SchematicCatalogPayload::new
     );
