@@ -1,11 +1,9 @@
 package dev.colonyfoundations.block;
 
-import net.fabricmc.fabric.api.entity.event.v1.ServerEntityCombatEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
@@ -30,8 +28,11 @@ import java.util.UUID;
  */
 public final class ColonyProtection {
     private static final Map<RegistryKey<World>, Map<Long, Set<BlockPos>>> TOWN_HALLS_BY_DIMENSION = new HashMap<>();
-    private static final Map<UUID, Long> LAST_DENIAL_NOTICE = new HashMap<>();
+    private static final Map<UUID, DenialNotice> LAST_DENIAL_NOTICE = new HashMap<>();
     private static boolean initialized;
+
+    private record DenialNotice(RegistryKey<World> dimension, long worldTime) {
+    }
 
     private ColonyProtection() {
     }
@@ -146,9 +147,10 @@ public final class ColonyProtection {
 
     private static void notifyDenied(ServerWorld world, ServerPlayerEntity player, boolean interaction) {
         long now = world.getTime();
-        Long previous = LAST_DENIAL_NOTICE.get(player.getUuid());
-        if (previous != null && now - previous < 20L) return;
-        LAST_DENIAL_NOTICE.put(player.getUuid(), now);
+        DenialNotice previous = LAST_DENIAL_NOTICE.get(player.getUuid());
+        if (previous != null && previous.dimension().equals(world.getRegistryKey())
+                && now >= previous.worldTime() && now - previous.worldTime() < 20L) return;
+        LAST_DENIAL_NOTICE.put(player.getUuid(), new DenialNotice(world.getRegistryKey(), now));
         player.sendMessage(Text.translatable(interaction
                 ? "message.colony_foundations.territory_interaction_protected"
                 : "message.colony_foundations.territory_protected"), true);
