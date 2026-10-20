@@ -202,9 +202,8 @@ public final class SchematicLoader {
             for (int z = 0; z < sizeZ; z++) {
                 for (int x = 0; x < sizeX; x++) {
                     int packed = packedBlocks[linear / 2];
-                    int paletteIndex = (linear & 1) == 0 ? (packed >>> 16) & 0xFFFF : packed & 0xFFFF;
+                    int paletteIndex = PackedPaletteRules.indexAt(packed, linear, palette.size());
                     linear++;
-                    if (paletteIndex >= palette.size()) continue;
                     BlockState state = palette.get(paletteIndex);
                     if (!state.isAir()) placements.add(new BlockPlacement(new BlockPos(x, y, z), state));
                 }
