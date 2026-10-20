@@ -17,3 +17,14 @@ This is not yet a complete MineColonies or Structurize port. Full profession AI,
 
 ## Build
 GitHub Actions builds with JDK 22 and Gradle 8.12. The public workflow does not fetch unverified third-party schematic assets. To use external schematics, place a compatible datapack whose licence permits your intended use in the relevant world's datapacks directory.
+
+## Colony ownership commands (experimental)
+
+The owner can manage the currently persisted Town Hall colony from within 8 blocks of the hall. Commands are server-authoritative and resolve the Town Hall in the player's current dimension:
+
+- `/colony info <x> <y> <z>` — show colony name, owner, level and member count (owner/member).
+- `/colony rename <x> <y> <z> <new name>` — rename the colony (owner only).
+- `/colony invite <x> <y> <z> <online player>` — grant membership (owner only).
+- `/colony revoke <x> <y> <z> <online player>` — revoke membership (owner only).
+
+This command workflow is an incremental addition, not a claim of full MineColonies permission parity. Build/CI and in-game multiplayer testing for this feature are still pending.
