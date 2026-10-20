@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "colony_foundations",
   "version": "${version}",
-  "name": "Colony Foundations",
-  "description": "A Fabric colony-building prototype with an in-game blueprint catalog and Structurize NBT import support.",
+  "name": "Основания колонии",
+  "description": "Экспериментальная система колоний, строительства и импорта чертежей для Fabric.",
   "authors": ["Colony Foundations contributors", "LDTTeam — bundled MineColonies schematic assets"],
   "license": "GPL-3.0-only",
   "environment": "*",
@@ -14,7 +14,7 @@
   "depends": {
     "fabricloader": ">=0.16.14",
     "minecraft": "1.21.5",
-    "java": ">=22",
+    "java": ">=21",
     "fabric-api": ">=0.119.5+1.21.5"
   }
 }

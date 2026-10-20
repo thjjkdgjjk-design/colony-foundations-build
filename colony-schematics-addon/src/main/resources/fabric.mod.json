@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "colony_schematics",
   "version": "${version}",
-  "name": "Colony Schematics",
-  "description": "A standalone Fabric schematic catalog and creative-mode placer for bundled MineColonies citizen-house blueprints.",
+  "name": "Каталог чертежей колонии",
+  "description": "Каталог, сканирование и размещение чертежей на Fabric.",
   "authors": ["Colony Schematics contributors", "LDTTeam — bundled MineColonies schematic assets"],
   "license": "GPL-3.0-only",
   "environment": "*",
@@ -14,7 +14,7 @@
   "depends": {
     "fabricloader": ">=0.16.14",
     "minecraft": "1.21.5",
-    "java": ">=22",
+    "java": ">=21",
     "fabric-api": ">=0.119.5+1.21.5"
   }
 }
