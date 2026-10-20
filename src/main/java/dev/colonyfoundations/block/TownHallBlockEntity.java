@@ -54,6 +54,13 @@ public final class TownHallBlockEntity extends BlockEntity {
     private int colonyLevel = 1;
     /** Last durable reason construction paused; empty when no known blocker exists. */
     private String projectIssue = "";
+    private UUID assignedBuilderUuid;
+    private BlockPos lastBuilderPosition;
+    private long lastBuilderUnavailableNotification = -1000L;
+    // Transient navigation diagnostics; these reset after a world reload.
+    private double lastBuilderDistance = -1.0;
+    private int noProgressPathChecks;
+    private int navigationFailures;
     private final Set<UUID> colonyMembers = new HashSet<>();
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
@@ -302,19 +309,50 @@ public final class TownHallBlockEntity extends BlockEntity {
 
         Box searchArea = new Box(pos).expand(32.0);
         String assignmentTag = assignmentTag(serverWorld, pos);
-        VillagerEntity builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
-                        villager -> villager.getCommandTags().contains(assignmentTag))
-                .stream().findFirst().orElse(null);
+        VillagerEntity builder = null;
+
+        // Resolve the saved worker by UUID first, not only by a nearby entity query.
+        if (hall.assignedBuilderUuid != null) {
+            var assigned = serverWorld.getEntity(hall.assignedBuilderUuid);
+            if (assigned instanceof VillagerEntity villager && !villager.isRemoved()) {
+                builder = villager;
+                hall.recordBuilderPosition(villager);
+                if (!builder.getCommandTags().contains(assignmentTag)) builder.addCommandTag(assignmentTag);
+            } else if (hall.lastBuilderPosition == null || serverWorld.isChunkLoaded(hall.lastBuilderPosition)) {
+                // Its last known chunk is loaded but the UUID is gone: release the stale assignment.
+                hall.assignedBuilderUuid = null;
+                hall.lastBuilderPosition = null;
+                hall.resetNavigationDiagnostics();
+                hall.markDirty();
+            } else {
+                hall.notifyAssignedBuilderUnavailable(serverWorld, pos);
+                return;
+            }
+        }
+
         if (builder == null) {
+            // Recover assignments saved by older versions before UUID tracking existed.
             builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
-                            villager -> villager.getCommandTags().contains(BUILDER_TAG)
-                                    && villager.getCommandTags().stream().noneMatch(tag -> tag.startsWith(ASSIGNED_TAG_PREFIX)))
-                    .stream()
-                    .min(Comparator.comparingDouble(v -> v.squaredDistanceTo(
-                            pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)))
-                    .orElse(null);
-            if (builder == null) return;
+                            villager -> villager.getCommandTags().contains(assignmentTag))
+                    .stream().findFirst().orElse(null);
+            if (builder == null) {
+                builder = serverWorld.getEntitiesByClass(VillagerEntity.class, searchArea,
+                                villager -> villager.getCommandTags().contains(BUILDER_TAG)
+                                        && villager.getCommandTags().stream().noneMatch(tag -> tag.startsWith(ASSIGNED_TAG_PREFIX)))
+                        .stream()
+                        .min(Comparator.comparingDouble(v -> v.squaredDistanceTo(
+                                pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5)))
+                        .orElse(null);
+            }
+            if (builder == null) {
+                hall.notifyNoBuilder(serverWorld, pos);
+                return;
+            }
             builder.addCommandTag(assignmentTag);
+            hall.assignedBuilderUuid = builder.getUuid();
+            hall.recordBuilderPosition(builder);
+            hall.resetNavigationDiagnostics();
+            hall.markDirty();
         }
 
         BlockPos site = pos.add(hall.siteOffsetX, -1, hall.siteOffsetZ);
@@ -324,10 +362,28 @@ public final class TownHallBlockEntity extends BlockEntity {
         double distance = builder.squaredDistanceTo(
                 workSpot.getX() + 0.5, workSpot.getY(), workSpot.getZ() + 0.5);
         if (distance > 9.0) {
-            builder.getNavigation().startMovingTo(
-                    workSpot.getX() + 0.5, workSpot.getY(), workSpot.getZ() + 0.5, 1.0);
+            boolean madeProgress = hall.lastBuilderDistance < 0.0 || distance < hall.lastBuilderDistance - 0.25;
+            hall.noProgressPathChecks = madeProgress ? 0 : hall.noProgressPathChecks + 1;
+            hall.lastBuilderDistance = distance;
+            boolean repeatedlyStuck = hall.noProgressPathChecks >= 6;
+            if (builder.getNavigation().isIdle() || repeatedlyStuck) {
+                if (repeatedlyStuck) builder.getNavigation().stop();
+                boolean started = builder.getNavigation().startMovingTo(
+                        workSpot.getX() + 0.5, workSpot.getY(), workSpot.getZ() + 0.5, 1.0);
+                if (!started || repeatedlyStuck) hall.navigationFailures++;
+                else hall.navigationFailures = 0;
+                hall.noProgressPathChecks = 0;
+                if (hall.navigationFailures >= 4) {
+                    builder.getNavigation().stop();
+                    hall.pauseForPlacementIssue(serverWorld, pos, workSpot,
+                            "Строитель не может найти путь к рабочей площадке после нескольких попыток");
+                    return;
+                }
+            }
             return;
         }
+        hall.resetNavigationDiagnostics();
+        hall.recordBuilderPosition(builder);
 
         CottageBlueprint.Placement placement = plan.get(hall.progress);
         BlockPos target = site.add(rotate(placement.offset(), definition, hall.rotation)
@@ -391,6 +447,46 @@ public final class TownHallBlockEntity extends BlockEntity {
         if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
     }
 
+    private void recordBuilderPosition(VillagerEntity builder) {
+        BlockPos current = builder.getBlockPos().toImmutable();
+        boolean changedChunk = lastBuilderPosition == null
+                || (lastBuilderPosition.getX() >> 4) != (current.getX() >> 4)
+                || (lastBuilderPosition.getZ() >> 4) != (current.getZ() >> 4);
+        lastBuilderPosition = current;
+        if (changedChunk) markDirty();
+    }
+
+    private void resetNavigationDiagnostics() {
+        lastBuilderDistance = -1.0;
+        noProgressPathChecks = 0;
+        navigationFailures = 0;
+    }
+
+    private void notifyNoBuilder(ServerWorld world, BlockPos hallPos) {
+        if (world.getTime() - lastBuilderUnavailableNotification < 100L) return;
+        lastBuilderUnavailableNotification = world.getTime();
+        Text message = Text.literal("[Колония] Стройка ожидает исполнителя: наймите жителя контрактом строителя и подведите его к ратуше.");
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5, hallPos.getZ() + 0.5) <= 64.0) {
+                player.sendMessage(message, false);
+            }
+        }
+    }
+
+    private void notifyAssignedBuilderUnavailable(ServerWorld world, BlockPos hallPos) {
+        if (world.getTime() - lastBuilderUnavailableNotification < 100L) return;
+        lastBuilderUnavailableNotification = world.getTime();
+        String location = lastBuilderPosition == null ? "" : " Последнее известное место: "
+                + lastBuilderPosition.getX() + ", " + lastBuilderPosition.getY() + ", " + lastBuilderPosition.getZ() + ".";
+        Text message = Text.literal("[Колония] Назначенный строитель сейчас не загружен; новый рабочий не назначен, чтобы избежать дублирования задания."
+                + location + " Загрузите этот участок мира, чтобы продолжить работу.");
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5, hallPos.getZ() + 0.5) <= 64.0) {
+                player.sendMessage(message, false);
+            }
+        }
+    }
+
     private void pauseForPlacementIssue(ServerWorld world, BlockPos hallPos, BlockPos target, String reason) {
         projectActive = false;
         projectIssue = reason;
@@ -446,6 +542,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     private VillagerEntity findAssignedBuilder(ServerWorld world, BlockPos pos) {
+        if (assignedBuilderUuid != null) {
+            var entity = world.getEntity(assignedBuilderUuid);
+            if (entity instanceof VillagerEntity villager && !villager.isRemoved()) return villager;
+        }
         String tag = assignmentTag(world, pos);
         return world.getEntitiesByClass(VillagerEntity.class, new Box(pos).expand(32.0),
                         villager -> villager.getCommandTags().contains(tag))
@@ -456,6 +556,9 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectActive = false;
         projectComplete = true;
         if (builder != null) builder.removeCommandTag(assignmentTag(world, pos));
+        assignedBuilderUuid = null;
+        lastBuilderPosition = null;
+        resetNavigationDiagnostics();
         markDirty();
         ColonyFoundations.LOGGER.info("Blueprint {} completed at {} in dimension {} ({} obstructed cells skipped).",
                 blueprintId, pos, world.getRegistryKey().getValue(), skippedObstructions);
@@ -482,6 +585,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putString("ColonyName", colonyName);
         nbt.putInt("ColonyLevel", colonyLevel);
         nbt.putString("ProjectIssue", projectIssue);
+        if (assignedBuilderUuid != null) nbt.putString("AssignedBuilderUuid", assignedBuilderUuid.toString());
+        if (lastBuilderPosition != null) nbt.putLong("AssignedBuilderLastPos", lastBuilderPosition.asLong());
         NbtList membersTag = new NbtList();
         colonyMembers.stream().map(UUID::toString).sorted().forEach(member -> membersTag.add(NbtString.of(member)));
         nbt.put("ColonyMembers", membersTag);
@@ -512,6 +617,14 @@ public final class TownHallBlockEntity extends BlockEntity {
         colonyName = nbt.getString("ColonyName").orElse("");
         colonyLevel = Math.max(1, nbt.getInt("ColonyLevel").orElse(1));
         projectIssue = nbt.getString("ProjectIssue").orElse("");
+        String builderRaw = nbt.getString("AssignedBuilderUuid").orElse("");
+        try {
+            assignedBuilderUuid = builderRaw.isBlank() ? null : UUID.fromString(builderRaw);
+        } catch (IllegalArgumentException ignored) {
+            assignedBuilderUuid = null;
+        }
+        lastBuilderPosition = nbt.getLong("AssignedBuilderLastPos").map(BlockPos::fromLong).orElse(null);
+        resetNavigationDiagnostics();
         colonyMembers.clear();
         nbt.getList("ColonyMembers").ifPresent(members -> {
             for (int i = 0; i < members.size(); i++) {
