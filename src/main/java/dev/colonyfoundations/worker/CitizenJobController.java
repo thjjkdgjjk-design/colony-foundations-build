@@ -423,6 +423,18 @@ public final class CitizenJobController {
 
         courierHut.ensureCourierTransferId();
         String transferId = courierHut.courierTransferId();
+        // Queue state proves this exact payload has already been counted even if its receipt
+        // aged out of the bounded block-entity journal: never route that carrier copy again.
+        if (courierHut.courierCargoCount() > 0 && request.lastTransferId().equals(transferId)) {
+            String cargoItemId = courierHut.courierCargoItemId();
+            int cargoCount = courierHut.courierCargoCount();
+            if (!cargoItemId.isBlank() && cargoCount > 0 && courierHut.countItem(cargoItemId) >= cargoCount) {
+                courierHut.consumeItem(cargoItemId, cargoCount);
+            }
+            courierHut.clearCourierCargo();
+            courierHut.clearCourierTask();
+            return;
+        }
         // The hut persists the task independently of the villager UUID. Adopt it only when
         // the same task and transfer token are still present on this hut.
         if (!request.courierUuid().equals(courier.getUuid().toString())) {
@@ -435,18 +447,6 @@ public final class CitizenJobController {
             request = requests.reassignCourier(requestId, previousCourier, courier.getUuid(),
                     transferId, world.getTime()).orElse(null);
             if (request == null) return;
-        }
-        // Queue state proves this exact payload has already been counted even if its receipt
-        // aged out of the bounded block-entity journal: never route that carrier copy again.
-        if (courierHut.courierCargoCount() > 0 && request.lastTransferId().equals(transferId)) {
-            String cargoItemId = courierHut.courierCargoItemId();
-            int cargoCount = courierHut.courierCargoCount();
-            if (!cargoItemId.isBlank() && cargoCount > 0 && courierHut.countItem(cargoItemId) >= cargoCount) {
-                courierHut.consumeItem(cargoItemId, cargoCount);
-            }
-            courierHut.clearCourierCargo();
-            courierHut.clearCourierTask();
-            return;
         }
         if (request.status().equals(ColonyRequestRules.Status.OPEN.id())
                 && courierHut.courierCargoCount() > 0) {
