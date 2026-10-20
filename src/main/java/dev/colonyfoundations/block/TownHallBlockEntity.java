@@ -334,7 +334,7 @@ public final class TownHallBlockEntity extends BlockEntity {
                 .subtract(rotate(definition.primaryOffset(), definition, hall.rotation)));
 
         // Never force-load or silently write outside the active world bounds.
-        if (target.getY() < serverWorld.getBottomY() || target.getY() >= serverWorld.getTopY()) {
+        if (target.getY() < serverWorld.getBottomY() || target.getY() >= serverWorld.getBottomY() + serverWorld.getDimension().height()) {
             hall.pauseForPlacementIssue(serverWorld, pos, target, "Целевая позиция вне высоты измерения");
             return;
         }
