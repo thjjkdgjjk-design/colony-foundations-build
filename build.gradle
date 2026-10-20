@@ -152,10 +152,6 @@ tasks.register('generateColonyHutAssets') {
     }
 }
 
-tasks.named('sourcesJar') {
-    dependsOn tasks.named('generateColonyHutAssets')
-}
-
 processResources {
     dependsOn tasks.named('generateColonyHutAssets')
     inputs.property 'version', project.version
@@ -173,6 +169,10 @@ tasks.withType(JavaCompile).configureEach {
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(22)
     withSourcesJar()
+}
+
+tasks.named('sourcesJar') {
+    dependsOn tasks.named('generateColonyHutAssets')
 }
 
 jar {
