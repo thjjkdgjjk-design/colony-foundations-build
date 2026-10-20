@@ -5,5 +5,7 @@
   "entity.colony_foundations.worker_at": "Worker at %s",
   "message.colony_foundations.no_free_worker": "No unassigned villager is nearby. Bring an available villager to this building.",
   "message.colony_foundations.assign_failed": "Could not assign this villager to the building.",
-  "message.colony_foundations.worker_assigned": "A villager has been assigned to %s."
+  "message.colony_foundations.worker_assigned": "A villager has been assigned to %s.",
+  "message.colony_foundations.territory_protected": "This colony territory is protected. You do not have permission to change these blocks.",
+  "message.colony_foundations.territory_interaction_protected": "This action is not allowed inside another colony's protected territory."
 }

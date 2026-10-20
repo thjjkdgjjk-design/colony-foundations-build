@@ -5,5 +5,7 @@
   "entity.colony_foundations.worker_at": "Работник: %s",
   "message.colony_foundations.no_free_worker": "Рядом нет свободного жителя. Подведите к зданию жителя, которому ещё не назначена работа.",
   "message.colony_foundations.assign_failed": "Не удалось назначить жителя на это здание.",
-  "message.colony_foundations.worker_assigned": "Житель назначен в здание «%s»."
+  "message.colony_foundations.worker_assigned": "Житель назначен в здание «%s».",
+  "message.colony_foundations.territory_protected": "Территория колонии защищена. У вас нет разрешения изменять эти блоки.",
+  "message.colony_foundations.territory_interaction_protected": "Это действие запрещено на защищённой территории чужой колонии."
 }

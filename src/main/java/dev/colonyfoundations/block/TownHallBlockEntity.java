@@ -96,6 +96,16 @@ public final class TownHallBlockEntity extends BlockEntity {
         return ownerUuid != null && ownerUuid.equals(player.getUuid());
     }
 
+    /** True only after a player has explicitly founded this Town Hall. */
+    public boolean isFounded() {
+        return ownerUuid != null;
+    }
+
+    /** Permission check with no side effect; protection must never auto-found a colony. */
+    public boolean canModifyTerritory(PlayerEntity player) {
+        return ownerUuid != null && ColonyTerritoryRules.canModify(ownerUuid, colonyMembers, player.getUuid());
+    }
+
     public String colonyName() {
         return colonyName.isBlank() ? "Колония без названия" : colonyName;
     }
@@ -308,7 +318,9 @@ public final class TownHallBlockEntity extends BlockEntity {
     }
 
     public static void tick(World world, BlockPos pos, BlockState state, TownHallBlockEntity hall) {
-        if (world.isClient || !(world instanceof ServerWorld serverWorld) || !hall.projectActive) return;
+        if (world.isClient || !(world instanceof ServerWorld serverWorld)) return;
+        ColonyProtection.registerTownHall(serverWorld, pos);
+        if (!hall.projectActive) return;
         if (serverWorld.getTime() % 10L != 0L) return;
 
         BlueprintDefinition definition = hall.currentDefinition();

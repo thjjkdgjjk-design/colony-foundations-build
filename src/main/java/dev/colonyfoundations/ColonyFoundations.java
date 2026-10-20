@@ -1,5 +1,6 @@
 package dev.colonyfoundations;
 
+import dev.colonyfoundations.block.ColonyProtection;
 import dev.colonyfoundations.block.ModBlockEntities;
 import dev.colonyfoundations.block.ModBlocks;
 import dev.colonyfoundations.block.ModHuts;
@@ -29,6 +30,7 @@ public final class ColonyFoundations implements ModInitializer {
         ModBlockEntities.initialize();
         ModItems.initialize();
         BuilderRecruitment.initialize();
+        ColonyProtection.initialize();
         BlueprintRegistry.register();
         ProjectNetworking.registerServer();
 
