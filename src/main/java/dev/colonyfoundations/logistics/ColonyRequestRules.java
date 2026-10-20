@@ -83,7 +83,8 @@ public final class ColonyRequestRules {
     }
 
     public static Optional<Snapshot> cancel(Snapshot current) {
-        if (current == null || current.status().terminal()) return Optional.empty();
+        if (current == null || current.status().terminal()
+                || current.status() == Status.IN_TRANSIT) return Optional.empty();
         return Optional.of(new Snapshot(current.requested(), current.delivered(), current.priority(),
                 Status.CANCELLED, ""));
     }

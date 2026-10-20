@@ -280,8 +280,9 @@ public final class CitizenJobController {
                 if (!claims.ownerAt(dimension, target).filter(owner::equals).isPresent()) continue;
                 BlockPos warehouse = findWarehouse(world, courierHutPos, owner, request.itemId());
                 if (warehouse == null) continue;
+                String transferId = java.util.UUID.randomUUID().toString();
                 if (requests.reserve(request.requestId(), courier.getUuid(), world.getTime()).isEmpty()) continue;
-                if (!courierHut.beginCourierTask(request.requestId(), warehouse, target)) {
+                if (!courierHut.beginCourierTask(request.requestId(), transferId, warehouse, target)) {
                     requests.release(request.requestId(), courier.getUuid(), world.getTime());
                     return;
                 }
@@ -294,11 +295,55 @@ public final class CitizenJobController {
         ColonyRequestState.RequestRecord request = requests.getRequest(requestId).orElse(null);
         if (request == null || !request.colonyOwnerUuid().equals(owner.toString())
                 || !request.dimension().equals(dimension)) {
-            courierHut.clearCourierTask();
+            if (courierHut.courierCargoCount() > 0) {
+                returnCourierCargoToWarehouse(world, courierHut, requests, requestId, courier, owner, dimension);
+            } else {
+                courierHut.clearCourierTask();
+            }
             return;
         }
 
-        // Recover a saved cargo stack if a restart happened between pickup and stage update.
+        courierHut.ensureCourierTransferId();
+        String transferId = courierHut.courierTransferId();
+
+        // Check durable receipts before changing request status. A previous partial delivery
+        // legitimately reopens the request; it must not be reserved again before receipt recovery.
+        if (courierHut.courierCargoCount() > 0) {
+            BlockPos targetPos = courierHut.courierTargetPosition();
+            if (world.isChunkLoaded(targetPos)
+                    && world.getBlockEntity(targetPos) instanceof ColonyHutBlockEntity target
+                    && claims.ownerAt(dimension, targetPos).filter(owner::equals).isPresent()
+                    && target.hasDeliveryReceipt(transferId)) {
+                tickCourierDelivery(world, courierHut, courier, requests, request, owner, dimension);
+                return;
+            }
+
+            BlockPos warehousePos = courierHut.courierWarehousePosition();
+            if (world.isChunkLoaded(warehousePos)
+                    && world.getBlockEntity(warehousePos) instanceof ColonyHutBlockEntity warehouse
+                    && warehouse.hutId().equals("hut_warehouse")
+                    && claims.ownerAt(dimension, warehousePos).filter(owner::equals).isPresent()
+                    && warehouse.hasDeliveryReceipt("refund:" + transferId)) {
+                returnCourierCargoToWarehouse(world, courierHut, requests, requestId, courier, owner, dimension);
+                return;
+            }
+
+            if (request.status().equals(ColonyRequestRules.Status.OPEN.id())) {
+                requests.reserve(request.requestId(), courier.getUuid(), world.getTime());
+                request = requests.getRequest(requestId).orElse(request);
+            }
+            if (request.status().equals(ColonyRequestRules.Status.RESERVED.id())
+                    && request.courierUuid().equals(courier.getUuid().toString())) {
+                requests.beginDelivery(request.requestId(), courier.getUuid(), world.getTime());
+                request = requests.getRequest(requestId).orElse(request);
+            }
+            if (!request.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id())
+                    || !request.courierUuid().equals(courier.getUuid().toString())) {
+                returnCourierCargoToWarehouse(world, courierHut, requests, requestId, courier, owner, dimension);
+                return;
+            }
+        }
+
         if (courierHut.courierCargoCount() > 0 && courierHut.courierStage().equals("to_warehouse")) {
             courierHut.setCourierStage("to_target");
         }
@@ -372,37 +417,30 @@ public final class CitizenJobController {
             return;
         }
         int maxStack = Math.min(64, Registries.ITEM.get(itemId).getDefaultStack().getMaxCount());
-        ItemStack cargo = warehouse.withdrawItem(current.itemId(), Math.min(maxStack, current.remainingCount()));
+        courierHut.ensureCourierTransferId();
+        String transferId = courierHut.courierTransferId();
+        ItemStack cargo = warehouse.withdrawItemForTransfer(
+                transferId, current.itemId(), Math.min(maxStack, current.remainingCount()));
         if (cargo.isEmpty()) {
             requests.release(current.requestId(), courier.getUuid(), world.getTime());
             courierHut.clearCourierTask();
             return;
         }
 
-        if (!courierHut.canStoreItems(List.of(cargo.copy()))) {
-            warehouse.storeItems(List.of(cargo));
-            requests.release(current.requestId(), courier.getUuid(), world.getTime());
-            courierHut.clearCourierTask();
-            return;
-        }
-        if (!courierHut.storeItems(List.of(cargo.copy())) || !courierHut.setCourierCargo(current.itemId(), cargo.getCount())) {
-            if (courierHut.countItem(current.itemId()) >= cargo.getCount()) {
-                courierHut.consumeItem(current.itemId(), cargo.getCount());
+        if (!courierHut.receiveCourierCargo(transferId, cargo)) {
+            if (warehouse.storeItemsOnce("refund:" + transferId, List.of(cargo.copy()))) {
+                requests.release(current.requestId(), courier.getUuid(), world.getTime());
+                courierHut.clearCourierTask();
             }
-            warehouse.storeItems(List.of(cargo));
-            requests.release(current.requestId(), courier.getUuid(), world.getTime());
-            courierHut.clearCourierCargo();
-            courierHut.clearCourierTask();
             return;
         }
         if (requests.beginDelivery(current.requestId(), courier.getUuid(), world.getTime()).isEmpty()) {
-            courierHut.consumeItem(current.itemId(), cargo.getCount());
-            warehouse.storeItems(List.of(cargo));
-            courierHut.clearCourierCargo();
-            courierHut.clearCourierTask();
-            return;
+            if (warehouse.storeItemsOnce("refund:" + transferId, List.of(cargo.copy()))) {
+                courierHut.consumeItem(current.itemId(), cargo.getCount());
+                courierHut.clearCourierCargo();
+                courierHut.clearCourierTask();
+            }
         }
-        courierHut.setCourierStage("to_target");
     }
 
     private static void tickCourierDelivery(ServerWorld world, ColonyHutBlockEntity courierHut,
@@ -411,18 +449,7 @@ public final class CitizenJobController {
                                             java.util.UUID owner, String dimension) {
         ColonyRequestState.RequestRecord current = requests.getRequest(request.requestId()).orElse(null);
         if (current == null) {
-            courierHut.clearCourierTask();
-            return;
-        }
-        if (current.status().equals(ColonyRequestRules.Status.RESERVED.id())
-                && courierHut.courierCargoCount() > 0) {
-            if (requests.beginDelivery(current.requestId(), courier.getUuid(), world.getTime()).isPresent()) {
-                current = requests.getRequest(request.requestId()).orElse(current);
-            }
-        }
-        if (!current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id())
-                || !current.courierUuid().equals(courier.getUuid().toString())) {
-            courierHut.clearCourierTask();
+            returnCourierCargoToWarehouse(world, courierHut, requests, request.requestId(), courier, owner, dimension);
             return;
         }
 
@@ -432,6 +459,36 @@ public final class CitizenJobController {
                 || !ColonyClaimState.get(world).ownerAt(dimension, targetPos).filter(owner::equals).isPresent()) {
             return; // Never force-load a destination chunk.
         }
+
+        courierHut.ensureCourierTransferId();
+        String transferId = courierHut.courierTransferId();
+        String itemId = courierHut.courierCargoItemId();
+        int count = courierHut.courierCargoCount();
+
+        if (target.hasDeliveryReceipt(transferId)) {
+            if (!current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id())
+                    || !current.courierUuid().equals(courier.getUuid().toString())) {
+                // The receipt proves this exact payload was applied; only reconcile the courier copy.
+                if (!itemId.isBlank() && count > 0 && courierHut.countItem(itemId) >= count) {
+                    courierHut.consumeItem(itemId, count);
+                }
+                courierHut.clearCourierCargo();
+                courierHut.clearCourierTask();
+                return;
+            }
+        }
+
+        if (current.status().equals(ColonyRequestRules.Status.RESERVED.id())
+                && count > 0 && current.courierUuid().equals(courier.getUuid().toString())) {
+            requests.beginDelivery(current.requestId(), courier.getUuid(), world.getTime());
+            current = requests.getRequest(request.requestId()).orElse(current);
+        }
+        if (!current.status().equals(ColonyRequestRules.Status.IN_TRANSIT.id())
+                || !current.courierUuid().equals(courier.getUuid().toString())) {
+            returnCourierCargoToWarehouse(world, courierHut, requests, current.requestId(), courier, owner, dimension);
+            return;
+        }
+
         if (courier.squaredDistanceTo(targetPos.getX() + 0.5, targetPos.getY() + 0.5,
                 targetPos.getZ() + 0.5) > 9.0) {
             if (WorkerNavigationRules.shouldRequestPath(
@@ -442,26 +499,51 @@ public final class CitizenJobController {
             return;
         }
 
-        String itemId = courierHut.courierCargoItemId();
-        int count = courierHut.courierCargoCount();
         if (itemId.isBlank() || count < 1 || courierHut.countItem(itemId) < count
                 || !current.itemId().equals(itemId)) {
-            requests.release(current.requestId(), courier.getUuid(), world.getTime());
-            courierHut.clearCourierCargo();
-            courierHut.clearCourierTask();
+            returnCourierCargoToWarehouse(world, courierHut, requests, current.requestId(), courier, owner, dimension);
             return;
         }
         Identifier parsedItem = Identifier.tryParse(itemId);
         if (parsedItem == null || !Registries.ITEM.containsId(parsedItem)) return;
         ItemStack delivery = new ItemStack(Registries.ITEM.get(parsedItem), count);
-        if (!target.canStoreItems(List.of(delivery)) || !target.storeItems(List.of(delivery.copy()))) return;
+        if (!target.hasDeliveryReceipt(transferId)
+                && !target.storeItemsOnce(transferId, List.of(delivery))) return;
 
-        if (requests.recordDelivery(current.requestId(), courier.getUuid(), count, world.getTime()).isEmpty()) {
-            target.consumeItem(itemId, count);
-            return;
-        }
+        // If request persistence failed, the next tick recognizes the saved destination receipt.
+        if (requests.recordDelivery(current.requestId(), courier.getUuid(), count, world.getTime()).isEmpty()) return;
         courierHut.consumeItem(itemId, count);
         courierHut.clearCourierCargo();
+        courierHut.clearCourierTask();
+    }
+
+    private static void returnCourierCargoToWarehouse(ServerWorld world, ColonyHutBlockEntity courierHut,
+                                                      ColonyRequestState requests, String requestId,
+                                                      VillagerEntity courier, java.util.UUID owner,
+                                                      String dimension) {
+        String itemId = courierHut.courierCargoItemId();
+        int count = courierHut.courierCargoCount();
+        if (itemId.isBlank() || count < 1) {
+            courierHut.clearCourierTask();
+            return;
+        }
+
+        BlockPos warehousePos = courierHut.courierWarehousePosition();
+        if (!world.isChunkLoaded(warehousePos)
+                || !(world.getBlockEntity(warehousePos) instanceof ColonyHutBlockEntity warehouse)
+                || !warehouse.hutId().equals("hut_warehouse")
+                || !ColonyClaimState.get(world).ownerAt(dimension, warehousePos).filter(owner::equals).isPresent()) {
+            return; // Keep the cargo persisted until the owning warehouse is available again.
+        }
+
+        Identifier itemIdentifier = Identifier.tryParse(itemId);
+        if (itemIdentifier == null || !Registries.ITEM.containsId(itemIdentifier)) return;
+        String transferId = courierHut.courierTransferId();
+        ItemStack cargo = new ItemStack(Registries.ITEM.get(itemIdentifier), count);
+        if (!warehouse.storeItemsOnce("refund:" + transferId, List.of(cargo))) return;
+        courierHut.consumeItem(itemId, count);
+        courierHut.clearCourierCargo();
+        requests.release(requestId, courier.getUuid(), world.getTime());
         courierHut.clearCourierTask();
     }
 }

@@ -26,7 +26,12 @@ import net.minecraft.util.math.BlockPos;
 
 import java.util.Optional;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -45,10 +50,16 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     private boolean enabled = true;
     private String courierRequestId = "";
     private String courierStage = "";
+    private String courierTransferId = "";
     private long courierWarehousePosition;
     private long courierTargetPosition;
     private String courierCargoItemId = "";
     private int courierCargoCount;
+    private static final int MAX_TRANSFER_RECEIPTS = 4096;
+    private final LinkedHashMap<String, TransferReceipt> outboundTransferReceipts = new LinkedHashMap<>();
+    private final LinkedHashMap<String, String> appliedTransferReceipts = new LinkedHashMap<>();
+
+    private record TransferReceipt(String itemId, int amount) { }
 
     public ColonyHutBlockEntity(BlockPos pos, BlockState state) {
         super(ModBlockEntities.COLONY_HUT, pos, state);
@@ -105,6 +116,84 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return true;
     }
 
+    /**
+     * Insert a single stack and persist its receipt in the same block-entity NBT.
+     * Replayed transfer IDs return success without inserting a second copy.
+     */
+    public boolean storeItemsOnce(String transferId, List<ItemStack> incoming) {
+        if (!isValidTransferId(transferId) || incoming == null) return false;
+        List<ItemStack> nonEmpty = incoming.stream()
+                .filter(stack -> stack != null && !stack.isEmpty())
+                .map(ItemStack::copy)
+                .toList();
+        if (nonEmpty.size() != 1) return false;
+
+        ItemStack stack = nonEmpty.get(0);
+        String itemId = Registries.ITEM.getId(stack.getItem()).toString();
+        String fingerprint = itemId + "#" + stack.getCount();
+        String applied = appliedTransferReceipts.get(transferId);
+        if (applied != null) return applied.equals(fingerprint);
+        if (!canStoreItems(nonEmpty) || !insertInto(inventory, stack.copy())) return false;
+
+        rememberReceipt(appliedTransferReceipts, transferId, fingerprint);
+        markDirty();
+        return true;
+    }
+
+    public boolean hasDeliveryReceipt(String transferId) {
+        return isValidTransferId(transferId) && appliedTransferReceipts.containsKey(transferId);
+    }
+
+    private static boolean isValidTransferId(String transferId) {
+        return transferId != null && !transferId.isBlank() && transferId.length() <= 128
+                && transferId.indexOf('\n') < 0 && transferId.indexOf('\t') < 0;
+    }
+
+    private static <V> void rememberReceipt(LinkedHashMap<String, V> receipts, String transferId, V value) {
+        receipts.putIfAbsent(transferId, value);
+        while (receipts.size() > MAX_TRANSFER_RECEIPTS) {
+            Iterator<String> iterator = receipts.keySet().iterator();
+            if (!iterator.hasNext()) break;
+            iterator.next();
+            iterator.remove();
+        }
+    }
+
+    private void readTransferReceipts(NbtCompound nbt) {
+        appliedTransferReceipts.clear();
+        outboundTransferReceipts.clear();
+
+        NbtCompound applied = nbt.getCompound("AppliedTransferReceipts").orElse(new NbtCompound());
+        for (String transferId : applied.getKeys()) {
+            if (appliedTransferReceipts.size() >= MAX_TRANSFER_RECEIPTS) break;
+            if (!isValidTransferId(transferId)) continue;
+            String fingerprint = applied.getString(transferId).orElse("");
+            int delimiter = fingerprint.lastIndexOf('#');
+            if (delimiter <= 0 || delimiter == fingerprint.length() - 1) continue;
+            Identifier item = Identifier.tryParse(fingerprint.substring(0, delimiter));
+            try {
+                int amount = Integer.parseInt(fingerprint.substring(delimiter + 1));
+                if (item != null && amount > 0 && amount <= 64) {
+                    appliedTransferReceipts.putIfAbsent(transferId, item + "#" + amount);
+                }
+            } catch (NumberFormatException ignored) {
+                // A damaged receipt is ignored; never synthesize inventory from it.
+            }
+        }
+
+        NbtCompound outbound = nbt.getCompound("OutboundTransferReceipts").orElse(new NbtCompound());
+        for (String transferId : outbound.getKeys()) {
+            if (outboundTransferReceipts.size() >= MAX_TRANSFER_RECEIPTS) break;
+            if (!isValidTransferId(transferId)) continue;
+            NbtCompound record = outbound.getCompound(transferId).orElse(new NbtCompound());
+            Identifier item = Identifier.tryParse(record.getString("ItemId").orElse(""));
+            int amount = record.getInt("Amount").orElse(0);
+            if (item != null && amount > 0 && amount <= 64) {
+                outboundTransferReceipts.putIfAbsent(transferId, new TransferReceipt(item.toString(), amount));
+            }
+        }
+    }
+
     public int countItem(String itemId) {
         Identifier id = Identifier.tryParse(itemId);
         if (id == null || !Registries.ITEM.containsId(id)) return 0;
@@ -130,21 +219,43 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return ItemStack.EMPTY;
     }
 
+    /** Idempotent warehouse withdrawal: a replay returns the original cargo without another debit. */
+    public ItemStack withdrawItemForTransfer(String transferId, String itemId, int maximumCount) {
+        if (!isValidTransferId(transferId) || maximumCount < 1) return ItemStack.EMPTY;
+        Identifier id = Identifier.tryParse(itemId);
+        if (id == null || !Registries.ITEM.containsId(id)) return ItemStack.EMPTY;
+        TransferReceipt previous = outboundTransferReceipts.get(transferId);
+        if (previous != null) {
+            if (!previous.itemId().equals(id.toString()) || previous.amount() > maximumCount) return ItemStack.EMPTY;
+            ItemStack replay = new ItemStack(Registries.ITEM.get(id), previous.amount());
+            return replay;
+        }
+
+        ItemStack removed = withdrawItem(id.toString(), maximumCount);
+        if (removed.isEmpty()) return ItemStack.EMPTY;
+        rememberReceipt(outboundTransferReceipts, transferId,
+                new TransferReceipt(id.toString(), removed.getCount()));
+        markDirty();
+        return removed;
+    }
+
     public boolean hasCourierTask() {
         return !courierRequestId.isBlank() && !courierStage.isBlank();
     }
 
     public String courierRequestId() { return courierRequestId; }
     public String courierStage() { return courierStage; }
+    public String courierTransferId() { return courierTransferId; }
     public BlockPos courierWarehousePosition() { return BlockPos.fromLong(courierWarehousePosition); }
     public BlockPos courierTargetPosition() { return BlockPos.fromLong(courierTargetPosition); }
     public String courierCargoItemId() { return courierCargoItemId; }
     public int courierCargoCount() { return courierCargoCount; }
 
-    public boolean beginCourierTask(String requestId, BlockPos warehouse, BlockPos target) {
-        if (requestId == null || requestId.isBlank() || warehouse == null || target == null
-                || hasCourierTask() || courierCargoCount > 0) return false;
+    public boolean beginCourierTask(String requestId, String transferId, BlockPos warehouse, BlockPos target) {
+        if (requestId == null || requestId.isBlank() || !isValidTransferId(transferId)
+                || warehouse == null || target == null || hasCourierTask() || courierCargoCount > 0) return false;
         courierRequestId = requestId;
+        courierTransferId = transferId;
         courierWarehousePosition = warehouse.asLong();
         courierTargetPosition = target.asLong();
         courierStage = "to_warehouse";
@@ -169,6 +280,27 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         return true;
     }
 
+    /**
+     * Store the picked stack and the courier metadata in one block-entity update.
+     * This prevents a restart from saving the inventory addition but losing the cargo marker.
+     */
+    public boolean receiveCourierCargo(String transferId, ItemStack cargo) {
+        if (!isValidTransferId(transferId) || !transferId.equals(courierTransferId)
+                || cargo == null || cargo.isEmpty() || !hasCourierTask()) return false;
+        String itemId = Registries.ITEM.getId(cargo.getItem()).toString();
+        if (courierCargoCount > 0) {
+            return courierCargoCount == cargo.getCount() && courierCargoItemId.equals(itemId)
+                    && countItem(itemId) >= courierCargoCount;
+        }
+        if (!courierStage.equals("to_warehouse") || !canStoreItems(List.of(cargo.copy()))
+                || !insertInto(inventory, cargo.copy())) return false;
+        courierCargoItemId = itemId;
+        courierCargoCount = cargo.getCount();
+        courierStage = "to_target";
+        markDirty();
+        return true;
+    }
+
     public void clearCourierCargo() {
         courierCargoItemId = "";
         courierCargoCount = 0;
@@ -178,8 +310,15 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     public void clearCourierTask() {
         courierRequestId = "";
         courierStage = "";
+        courierTransferId = "";
         courierWarehousePosition = 0L;
         courierTargetPosition = 0L;
+        markDirty();
+    }
+
+    public void ensureCourierTransferId() {
+        if (!hasCourierTask() || isValidTransferId(courierTransferId)) return;
+        courierTransferId = UUID.randomUUID().toString();
         markDirty();
     }
 
@@ -388,10 +527,22 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         if (assignedCitizen != null) nbt.putString("AssignedCitizen", assignedCitizen.toString());
         nbt.putString("CourierRequestId", courierRequestId);
         nbt.putString("CourierStage", courierStage);
+        nbt.putString("CourierTransferId", courierTransferId);
         nbt.putLong("CourierWarehousePosition", courierWarehousePosition);
         nbt.putLong("CourierTargetPosition", courierTargetPosition);
         nbt.putString("CourierCargoItemId", courierCargoItemId);
         nbt.putInt("CourierCargoCount", courierCargoCount);
+        NbtCompound applied = new NbtCompound();
+        appliedTransferReceipts.forEach(applied::putString);
+        nbt.put("AppliedTransferReceipts", applied);
+        NbtCompound outbound = new NbtCompound();
+        outboundTransferReceipts.forEach((transferId, receipt) -> {
+            NbtCompound entry = new NbtCompound();
+            entry.putString("ItemId", receipt.itemId());
+            entry.putInt("Amount", receipt.amount());
+            outbound.put(transferId, entry);
+        });
+        nbt.put("OutboundTransferReceipts", outbound);
         Inventories.writeNbt(nbt, inventory, registries);
     }
 
@@ -408,6 +559,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         }
         courierRequestId = nbt.getString("CourierRequestId").orElse("");
         courierStage = nbt.getString("CourierStage").orElse("");
+        courierTransferId = nbt.getString("CourierTransferId").orElse("");
         courierWarehousePosition = nbt.getLong("CourierWarehousePosition").orElse(0L);
         courierTargetPosition = nbt.getLong("CourierTargetPosition").orElse(0L);
         courierCargoItemId = nbt.getString("CourierCargoItemId").orElse("");
@@ -420,9 +572,13 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
                 || (!courierStage.equals("to_warehouse") && !courierStage.equals("to_target"))) {
             courierRequestId = "";
             courierStage = "";
+            courierTransferId = "";
             courierWarehousePosition = 0L;
             courierTargetPosition = 0L;
+        } else if (!isValidTransferId(courierTransferId)) {
+            courierTransferId = UUID.randomUUID().toString();
         }
+        readTransferReceipts(nbt);
         inventory.clear();
         Inventories.readNbt(nbt, inventory, registries);
     }

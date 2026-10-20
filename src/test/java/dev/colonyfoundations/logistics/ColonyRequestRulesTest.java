@@ -20,6 +20,7 @@ class ColonyRequestRulesTest {
         var inTransit = ColonyRequestRules.beginDelivery(reserved, courier).orElseThrow();
         assertEquals(ColonyRequestRules.Status.IN_TRANSIT, inTransit.status());
         assertTrue(ColonyRequestRules.deliver(inTransit, UUID.randomUUID(), 1).isEmpty());
+        assertTrue(ColonyRequestRules.cancel(inTransit).isEmpty());
     }
 
     @Test
