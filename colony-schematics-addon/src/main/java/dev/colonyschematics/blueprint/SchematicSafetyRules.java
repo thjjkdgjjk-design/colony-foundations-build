@@ -28,6 +28,7 @@ public final class SchematicSafetyRules {
     }
 
     public static boolean blockEntityTypeMatches(String expectedId, String actualId) {
+        if (expectedId == null || actualId == null) return false;
         net.minecraft.util.Identifier expected = net.minecraft.util.Identifier.tryParse(expectedId);
         net.minecraft.util.Identifier actual = net.minecraft.util.Identifier.tryParse(actualId);
         return expected != null && expected.equals(actual);

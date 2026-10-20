@@ -268,3 +268,8 @@ CI compilation proves source compatibility with the compile environment only; it
 - Исправлен риск захвата новой ратуши: владелец теперь назначается серверным обработчиком `TownHallBlock.onPlaced` из фактического игрока-разместившего блок, до первого отдельного взаимодействия.
 - `ensureFounded` остаётся резервным путём только для не принадлежащих никому ратуш, появившихся через автоматизацию/старые сохранения; проверка сетевых пакетов по-прежнему не основывает колонию.
 - API-сигнатура `onPlaced(World, BlockPos, BlockState, LivingEntity, ItemStack)` сверена с Yarn 1.21.5 build 1. Поведение требует подтверждения серверным игровым тестом: CI компиляция не доказывает, что владелец корректно сохраняется после реального размещения/перезахода.
+
+
+### CI correction — null-safe block-entity type comparison
+
+- Run `39488777713` reported a NullPointerException in the negative unit test because `Identifier.tryParse(null)` throws. The type guard now rejects null strings before parsing. The placement queue already calls the guard for missing/invalid type IDs, so this also makes that malformed-data path non-throwing.
