@@ -37,7 +37,7 @@ public final class TownHallBlockEntity extends BlockEntity {
     private boolean projectComplete;
     private int progress;
     private int skippedObstructions;
-    private long lastMissingResourceNotification = Long.MIN_VALUE;
+    private long lastMissingResourceNotification = -1000L;
     private Identifier blueprintId = Identifier.of(ColonyFoundations.MOD_ID, "cottage");
     private int rotation;
     private final Map<Identifier, Integer> resourceStock = new HashMap<>();
@@ -52,7 +52,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             player.sendMessage(Text.literal("[Colony] Этот чертёж недоступен. Проверьте ресурсы сборки."), true);
             return;
         }
-        if (projectActive && !blueprintId.equals(newBlueprintId)) {
+        if ((projectActive || (progress > 0 && !projectComplete)) && !blueprintId.equals(newBlueprintId)) {
             player.sendMessage(Text.literal("[Colony] Сначала заверши или приостанови текущий проект."), true);
             return;
         }
@@ -115,7 +115,8 @@ public final class TownHallBlockEntity extends BlockEntity {
             if (missing <= 0 || !Registries.ITEM.containsId(itemId)) continue;
             Item item = Registries.ITEM.get(itemId);
 
-            for (ItemStack stack : player.getInventory().main) {
+            for (int slot = 0; slot < 36 && missing > 0; slot++) {
+                ItemStack stack = player.getInventory().getStack(slot);
                 if (missing <= 0) break;
                 if (stack.isEmpty() || stack.getItem() != item) continue;
                 int amount = Math.min(missing, stack.getCount());
