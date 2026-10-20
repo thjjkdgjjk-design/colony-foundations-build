@@ -1,5 +1,6 @@
 {
   "block.colony_foundations.town_hall": "Town Hall",
+  "block.colony_foundations.scarecrow": "Farm Field",
   "item.colony_foundations.builder_contract": "Builder Contract",
   "item.colony_foundations.worker_contract": "Worker Contract",
   "entity.colony_foundations.worker_at": "Worker at %s",
@@ -7,5 +8,10 @@
   "message.colony_foundations.assign_failed": "Could not assign this villager to the building.",
   "message.colony_foundations.worker_assigned": "A villager has been assigned to %s.",
   "message.colony_foundations.territory_protected": "This colony territory is protected. You do not have permission to change these blocks.",
-  "message.colony_foundations.territory_interaction_protected": "This action is not allowed inside another colony's protected territory."
+  "message.colony_foundations.territory_interaction_protected": "This action is not allowed inside another colony's protected territory.",
+  "message.colony_foundations.field_crop_set": "This field will grow: %s.",
+  "message.colony_foundations.field_radius_set": "Field radius: %s blocks. Area: %s×%s.",
+  "message.colony_foundations.field_fertilizer_enabled": "Bone meal support is enabled for this field.",
+  "message.colony_foundations.field_fertilizer_disabled": "Fertilizer support is disabled for this field.",
+  "message.colony_foundations.field_status": "Crop: %s · radius: %s · fertilizer: %s."
 }

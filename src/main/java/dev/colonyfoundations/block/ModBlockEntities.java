@@ -23,6 +23,12 @@ public final class ModBlockEntities {
             ).build()
     );
 
+    public static final BlockEntityType<FarmFieldBlockEntity> FARM_FIELD = Registry.register(
+            Registries.BLOCK_ENTITY_TYPE,
+            Identifier.of(ColonyFoundations.MOD_ID, "scarecrow"),
+            FabricBlockEntityTypeBuilder.create(FarmFieldBlockEntity::new, ModField.BLOCK).build()
+    );
+
     private ModBlockEntities() { }
 
     public static void initialize() {

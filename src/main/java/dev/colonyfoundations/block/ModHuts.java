@@ -35,7 +35,7 @@ public final class ModHuts {
             "hut_plantation", "hut_rabbit_hutch", "hut_sawmill", "hut_school", "hut_shepherd",
             "hut_sifter", "hut_smeltery", "hut_stable", "hut_stone_smeltery", "hut_stonemason",
             "hut_swine_herder", "hut_tavern", "hut_university", "hut_warehouse",
-            "simple_quarry", "medium_quarry", "large_quarry", "stash", "post_box", "scarecrow",
+            "simple_quarry", "medium_quarry", "large_quarry", "stash", "post_box",
             "colony_rack", "plantation_field", "colony_flag_banner", "colony_flag_wall_banner",
             "construction_tape", "colony_gate", "colony_barrel"
     );

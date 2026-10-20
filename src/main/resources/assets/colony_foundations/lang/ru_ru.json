@@ -1,5 +1,6 @@
 {
   "block.colony_foundations.town_hall": "Ратуша колонии",
+  "block.colony_foundations.scarecrow": "Поле колонии",
   "item.colony_foundations.builder_contract": "Контракт строителя",
   "item.colony_foundations.worker_contract": "Контракт рабочего",
   "entity.colony_foundations.worker_at": "Работник: %s",
@@ -7,5 +8,10 @@
   "message.colony_foundations.assign_failed": "Не удалось назначить жителя на это здание.",
   "message.colony_foundations.worker_assigned": "Житель назначен в здание «%s».",
   "message.colony_foundations.territory_protected": "Территория колонии защищена. У вас нет разрешения изменять эти блоки.",
-  "message.colony_foundations.territory_interaction_protected": "Это действие запрещено на защищённой территории чужой колонии."
+  "message.colony_foundations.territory_interaction_protected": "Это действие запрещено на защищённой территории чужой колонии.",
+  "message.colony_foundations.field_crop_set": "Поле будет выращивать культуру: %s.",
+  "message.colony_foundations.field_radius_set": "Радиус поля: %s блок. Площадь: %s×%s.",
+  "message.colony_foundations.field_fertilizer_enabled": "Использование костной муки разрешено для этого поля.",
+  "message.colony_foundations.field_fertilizer_disabled": "Использование удобрения для этого поля отключено.",
+  "message.colony_foundations.field_status": "Культура: %s · радиус: %s · удобрение: %s."
 }

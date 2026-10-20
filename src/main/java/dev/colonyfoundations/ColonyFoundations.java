@@ -4,6 +4,7 @@ import dev.colonyfoundations.block.ColonyProtection;
 import dev.colonyfoundations.block.ModBlockEntities;
 import dev.colonyfoundations.block.ModBlocks;
 import dev.colonyfoundations.block.ModHuts;
+import dev.colonyfoundations.block.ModField;
 import dev.colonyfoundations.blueprint.BlueprintRegistry;
 import dev.colonyfoundations.item.BuilderRecruitment;
 import dev.colonyfoundations.network.ProjectNetworking;
@@ -27,6 +28,7 @@ public final class ColonyFoundations implements ModInitializer {
     public void onInitialize() {
         ModBlocks.initialize();
         ModHuts.initialize();
+        ModField.initialize();
         ModBlockEntities.initialize();
         ModItems.initialize();
         BuilderRecruitment.initialize();
@@ -38,6 +40,7 @@ public final class ColonyFoundations implements ModInitializer {
             entries.add(ModBlocks.TOWN_HALL);
             entries.add(ModItems.BUILDER_CONTRACT);
             entries.add(ModItems.WORKER_CONTRACT);
+            entries.add(ModField.ITEM);
             ModHuts.items().forEach(entries::add);
         });
 
