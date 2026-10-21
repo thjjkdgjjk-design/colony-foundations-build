@@ -410,6 +410,47 @@ public final class ColonyClaimState extends PersistentState {
                 .filter(this::isWorkOrderRecordAnchored);
     }
 
+    /** Change priority only for a queued, zero-progress order belonging to this colony. */
+    public Optional<WorkOrderRecord> reprioritizeQueuedWorkOrder(UUID colonyUuid, long sequence, int priority) {
+        if (colonyUuid == null || sequence <= 0 || priority < -10 || priority > 10) return Optional.empty();
+        String colonyId = colonyUuid.toString();
+        for (Map.Entry<String, WorkOrderRecord> entry : workOrders.entrySet()) {
+            WorkOrderRecord order = entry.getValue();
+            if (!order.isValid() || !isWorkOrderRecordAnchored(order)
+                    || !colonyId.equals(order.colonyId()) || order.createdSequence() != sequence
+                    || order.progress() != 0
+                    || ColonyWorkOrderStatus.parse(order.status())
+                        .filter(status -> status == ColonyWorkOrderStatus.QUEUED).isEmpty()) continue;
+            WorkOrderRecord updated = order.withPriority(priority);
+            if (!updated.equals(order)) {
+                workOrders.put(entry.getKey(), updated);
+                markDirty();
+            }
+            return Optional.of(updated);
+        }
+        return Optional.empty();
+    }
+
+    /** Cancel only a queued or blocked zero-progress order; active/progressed work is protected. */
+    public Optional<WorkOrderRecord> cancelUnstartedWorkOrder(UUID colonyUuid, long sequence) {
+        if (colonyUuid == null || sequence <= 0) return Optional.empty();
+        String colonyId = colonyUuid.toString();
+        for (Map.Entry<String, WorkOrderRecord> entry : workOrders.entrySet()) {
+            WorkOrderRecord order = entry.getValue();
+            ColonyWorkOrderStatus status = ColonyWorkOrderStatus.parse(order.status()).orElse(null);
+            if (!order.isValid() || !isWorkOrderRecordAnchored(order)
+                    || !colonyId.equals(order.colonyId()) || order.createdSequence() != sequence
+                    || order.progress() != 0
+                    || (status != ColonyWorkOrderStatus.QUEUED && status != ColonyWorkOrderStatus.BLOCKED)) continue;
+            WorkOrderRecord cancelled = order.withStatus(ColonyWorkOrderStatus.CANCELLED.id(),
+                    "Cancelled before construction started");
+            workOrders.put(entry.getKey(), cancelled);
+            markDirty();
+            return Optional.of(cancelled);
+        }
+        return Optional.empty();
+    }
+
     public List<WorkOrderRecord> workOrdersForColony(UUID colonyUuid) {
         if (colonyUuid == null) return List.of();
         String id = colonyUuid.toString();

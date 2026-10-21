@@ -118,6 +118,51 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void queuedWorkOrderCanBeReprioritizedButStartedOrderCannot() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(5, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        var order = state.upsertWorkOrder(queued).orElseThrow();
+
+        assertEquals(8, state.reprioritizeQueuedWorkOrder(colonyId, order.createdSequence(), 8)
+                .orElseThrow().priority());
+        assertTrue(state.reprioritizeQueuedWorkOrder(colonyId, order.createdSequence(), 11).isEmpty());
+
+        var active = state.upsertWorkOrder(state.workOrder(UUID.fromString(order.orderId())).orElseThrow()
+                .withStatus("active", "")).orElseThrow();
+        assertTrue(state.reprioritizeQueuedWorkOrder(colonyId, active.createdSequence(), 1).isEmpty());
+    }
+
+    @Test
+    void onlyZeroProgressQueuedOrBlockedOrdersCanBeCancelled() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(5, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        var order = state.upsertWorkOrder(queued).orElseThrow();
+
+        assertEquals("cancelled", state.cancelUnstartedWorkOrder(colonyId, order.createdSequence())
+                .orElseThrow().status());
+        assertTrue(state.cancelUnstartedWorkOrder(colonyId, order.createdSequence()).isEmpty());
+
+        ColonyClaimState.WorkOrderRecord active = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(20, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 20, -3, 0, 0, "active", 1, 3, "", ownerId.toString());
+        var storedActive = state.upsertWorkOrder(active).orElseThrow();
+        assertTrue(state.cancelUnstartedWorkOrder(colonyId, storedActive.createdSequence()).isEmpty());
+    }
+
+    @Test
     void terminalWorkOrdersCannotBeReactivatedAndSequencesStayStable() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();

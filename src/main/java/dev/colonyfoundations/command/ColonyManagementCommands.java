@@ -3,6 +3,7 @@ package dev.colonyfoundations.command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import dev.colonyfoundations.block.ColonyPermission;
 import dev.colonyfoundations.block.ColonyClaimState;
 import dev.colonyfoundations.block.ColonyRank;
@@ -88,6 +89,29 @@ public final class ColonyManagementCommands {
             rankCommand.then(rankHall);
             root.then(rankCommand);
 
+            var cancelOrderCommand = literal("order-cancel");
+            var cancelOrderHall = argument("hall", BlockPosArgumentType.blockPos());
+            var cancelOrderSequence = argument("sequence", LongArgumentType.longArg(1L));
+            cancelOrderSequence.executes(context -> cancelQueuedWorkOrder(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    LongArgumentType.getLong(context, "sequence")));
+            cancelOrderHall.then(cancelOrderSequence);
+            cancelOrderCommand.then(cancelOrderHall);
+            root.then(cancelOrderCommand);
+
+            var orderPriorityCommand = literal("order-priority");
+            var orderPriorityHall = argument("hall", BlockPosArgumentType.blockPos());
+            var orderPrioritySequence = argument("sequence", LongArgumentType.longArg(1L));
+            var orderPriorityValue = argument("priority", IntegerArgumentType.integer(-10, 10));
+            orderPriorityValue.executes(context -> reprioritizeQueuedWorkOrder(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    LongArgumentType.getLong(context, "sequence"),
+                    IntegerArgumentType.getInteger(context, "priority")));
+            orderPrioritySequence.then(orderPriorityValue);
+            orderPriorityHall.then(orderPrioritySequence);
+            orderPriorityCommand.then(orderPriorityHall);
+            root.then(orderPriorityCommand);
+
             root.then(literal("work-orders")
                     .then(argument("hall", BlockPosArgumentType.blockPos())
                             .executes(context -> listWorkOrders(context.getSource(),
@@ -133,6 +157,44 @@ public final class ColonyManagementCommands {
 
             dispatcher.register(root);
         });
+    }
+
+    private static int cancelQueuedWorkOrder(ServerCommandSource source, BlockPos pos, long sequence)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null || !hall.canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You need build_projects permission to manage work orders."), true);
+            return 0;
+        }
+        if (!(player.getWorld() instanceof ServerWorld serverWorld) || hall.colonyUuid() == null) return 0;
+        var cancelled = ColonyClaimState.get(serverWorld).cancelUnstartedWorkOrder(hall.colonyUuid(), sequence);
+        if (cancelled.isEmpty()) {
+            player.sendMessage(Text.literal("Only queued/blocked orders with zero progress can be cancelled."), true);
+            return 0;
+        }
+        player.sendMessage(Text.literal("Cancelled work order #" + sequence + "."), false);
+        return 1;
+    }
+
+    private static int reprioritizeQueuedWorkOrder(ServerCommandSource source, BlockPos pos,
+                                                   long sequence, int priority)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null || !hall.canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You need build_projects permission to manage work orders."), true);
+            return 0;
+        }
+        if (!(player.getWorld() instanceof ServerWorld serverWorld) || hall.colonyUuid() == null) return 0;
+        var updated = ColonyClaimState.get(serverWorld)
+                .reprioritizeQueuedWorkOrder(hall.colonyUuid(), sequence, priority);
+        if (updated.isEmpty()) {
+            player.sendMessage(Text.literal("Only a queued order with zero progress can be reprioritized."), true);
+            return 0;
+        }
+        player.sendMessage(Text.literal("Work order #" + sequence + " priority is now " + priority + "."), false);
+        return 1;
     }
 
     private static int queueBuildOrder(ServerCommandSource source, BlockPos pos, String blueprintId,

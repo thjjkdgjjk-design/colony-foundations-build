@@ -51,3 +51,6 @@ The current Town Hall BUILD project now mirrors its order ID, blueprint, site, r
 - `/colony queue <x> <y> <z> <blueprint_id> <rotation 0-3> <offset_x> <offset_z> <priority -10..10>` adds another BUILD order without replacing the order currently being executed.
 - When the Town Hall executor is idle or its current BUILD finishes, the highest-priority queued BUILD for that Town Hall is promoted automatically. Ties use creation sequence. Construction still uses one executor and a shared Town Hall inventory; materials needed across active and queued BUILD orders are counted together.
 - Queueing currently supports BUILD only. UPGRADE, REPAIR and REMOVE have validated state/level models but no real placement executors yet. Check a world backup before testing and verify the queue in Minecraft; CI alone is not a gameplay test.
+
+- `/colony order-priority <x> <y> <z> <sequence> <priority -10..10>` changes the priority of an unstarted queued order.
+- `/colony order-cancel <x> <y> <z> <sequence>` cancels only a queued/blocked order with zero placed blocks; active/progressed orders are protected.
