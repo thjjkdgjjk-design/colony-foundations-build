@@ -50,6 +50,16 @@ public final class ColonyClaimState extends PersistentState {
             Codec.INT.optionalFieldOf("level", 1).forGetter(BuildingRecord::level)
     ).apply(instance, BuildingRecord::new));
 
+    private static final Codec<WorkOrderMetadata> WORK_ORDER_METADATA_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.INT.optionalFieldOf("priority", 0).forGetter(WorkOrderMetadata::priority),
+            Codec.LONG.optionalFieldOf("created_sequence", 0L).forGetter(WorkOrderMetadata::createdSequence),
+            Codec.STRING.fieldOf("status").forGetter(WorkOrderMetadata::status),
+            Codec.INT.fieldOf("progress").forGetter(WorkOrderMetadata::progress),
+            Codec.INT.fieldOf("total_placements").forGetter(WorkOrderMetadata::totalPlacements),
+            Codec.STRING.optionalFieldOf("issue", "").forGetter(WorkOrderMetadata::issue),
+            Codec.STRING.optionalFieldOf("requested_by", "").forGetter(WorkOrderMetadata::requestedBy)
+    ).apply(instance, WorkOrderMetadata::new));
+
     private static final Codec<WorkOrderRecord> WORK_ORDER_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("order_id").forGetter(WorkOrderRecord::orderId),
             Codec.STRING.fieldOf("colony_id").forGetter(WorkOrderRecord::colonyId),
@@ -64,14 +74,9 @@ public final class ColonyClaimState extends PersistentState {
             Codec.INT.fieldOf("rotation").forGetter(WorkOrderRecord::rotation),
             Codec.INT.fieldOf("offset_x").forGetter(WorkOrderRecord::offsetX),
             Codec.INT.fieldOf("offset_z").forGetter(WorkOrderRecord::offsetZ),
-            Codec.INT.optionalFieldOf("priority", 0).forGetter(WorkOrderRecord::priority),
-            Codec.LONG.optionalFieldOf("created_sequence", 0L).forGetter(WorkOrderRecord::createdSequence),
-            Codec.STRING.fieldOf("status").forGetter(WorkOrderRecord::status),
-            Codec.INT.fieldOf("progress").forGetter(WorkOrderRecord::progress),
-            Codec.INT.fieldOf("total_placements").forGetter(WorkOrderRecord::totalPlacements),
-            Codec.STRING.optionalFieldOf("issue", "").forGetter(WorkOrderRecord::issue),
-            Codec.STRING.optionalFieldOf("requested_by", "").forGetter(WorkOrderRecord::requestedBy)
+            WORK_ORDER_METADATA_CODEC.fieldOf("metadata").forGetter(WorkOrderRecord::metadata)
     ).apply(instance, WorkOrderRecord::new));
+
 
     private static final Codec<CitizenAssignment> CITIZEN_ASSIGNMENT_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("citizen_uuid").forGetter(CitizenAssignment::citizenUuid),
@@ -596,65 +601,93 @@ public final class ColonyClaimState extends PersistentState {
         return ((long) x & 0xFFFF_FFFFL) << 32 | ((long) z & 0xFFFF_FFFFL);
     }
 
+    public record WorkOrderMetadata(int priority, long createdSequence, String status,
+                                    int progress, int totalPlacements, String issue, String requestedBy) {
+        public WorkOrderMetadata {
+            priority = Math.max(-10, Math.min(10, priority));
+            createdSequence = Math.max(0L, createdSequence);
+            status = status == null ? "" : status;
+            progress = Math.max(0, progress);
+            totalPlacements = Math.max(progress, Math.max(0, totalPlacements));
+            issue = issue == null ? "" : issue;
+            requestedBy = requestedBy == null ? "" : requestedBy;
+            issue = issue.length() > 512 ? issue.substring(0, 512) : issue;
+        }
+    }
+
     public record WorkOrderRecord(String orderId, String colonyId, String dimension,
                                   long townHallPosition, long sitePosition, String blueprintId,
                                   String type, int currentLevel, int targetLevel, int builderLevel,
-                                  int rotation, int offsetX, int offsetZ, int priority,
-                                  long createdSequence, String status, int progress,
-                                  int totalPlacements, String issue, String requestedBy) {
+                                  int rotation, int offsetX, int offsetZ, WorkOrderMetadata metadata) {
         public WorkOrderRecord {
             orderId = orderId == null ? "" : orderId;
             colonyId = colonyId == null ? "" : colonyId;
             dimension = dimension == null ? "" : dimension;
             blueprintId = blueprintId == null ? "" : blueprintId;
             type = type == null ? "" : type;
-            status = status == null ? "" : status;
-            issue = issue == null ? "" : issue;
-            requestedBy = requestedBy == null ? "" : requestedBy;
             rotation = Math.floorMod(rotation, 4);
             offsetX = Math.max(-64, Math.min(64, offsetX));
             offsetZ = Math.max(-64, Math.min(64, offsetZ));
-            priority = Math.max(-10, Math.min(10, priority));
-            createdSequence = Math.max(0L, createdSequence);
-            progress = Math.max(0, progress);
-            totalPlacements = Math.max(progress, Math.max(0, totalPlacements));
             builderLevel = Math.max(1, Math.min(5, builderLevel));
-            issue = issue.length() > 512 ? issue.substring(0, 512) : issue;
+            metadata = metadata == null
+                    ? new WorkOrderMetadata(0, 0L, ColonyWorkOrderStatus.QUEUED.id(), 0, 0, "", "")
+                    : metadata;
         }
+
+        /** Stable convenience constructor used by order producers and tests. */
+        public WorkOrderRecord(String orderId, String colonyId, String dimension,
+                               long townHallPosition, long sitePosition, String blueprintId,
+                               String type, int currentLevel, int targetLevel, int builderLevel,
+                               int rotation, int offsetX, int offsetZ, int priority,
+                               long createdSequence, String status, int progress,
+                               int totalPlacements, String issue, String requestedBy) {
+            this(orderId, colonyId, dimension, townHallPosition, sitePosition, blueprintId,
+                    type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
+                    new WorkOrderMetadata(priority, createdSequence, status, progress,
+                            totalPlacements, issue, requestedBy));
+        }
+
+        public int priority() { return metadata.priority(); }
+        public long createdSequence() { return metadata.createdSequence(); }
+        public String status() { return metadata.status(); }
+        public int progress() { return metadata.progress(); }
+        public int totalPlacements() { return metadata.totalPlacements(); }
+        public String issue() { return metadata.issue(); }
+        public String requestedBy() { return metadata.requestedBy(); }
 
         public boolean isValid() {
             return validUuid(orderId) && validUuid(colonyId)
                     && Identifier.tryParse(dimension) != null
                     && Identifier.tryParse(blueprintId) != null
                     && ColonyWorkOrderType.parse(type).isPresent()
-                    && ColonyWorkOrderStatus.parse(status).isPresent()
+                    && ColonyWorkOrderStatus.parse(status()).isPresent()
                     && currentLevel >= 0 && currentLevel <= 5
                     && targetLevel >= 0 && targetLevel <= 5
                     && builderLevel >= 1 && builderLevel <= 5
-                    && progress <= totalPlacements
-                    && (requestedBy.isBlank() || validUuid(requestedBy));
+                    && progress() <= totalPlacements()
+                    && (requestedBy().isBlank() || validUuid(requestedBy()));
         }
 
         public boolean isTerminal() {
-            return ColonyWorkOrderStatus.parse(status).map(ColonyWorkOrderStatus::isTerminal).orElse(false);
+            return ColonyWorkOrderStatus.parse(status()).map(ColonyWorkOrderStatus::isTerminal).orElse(false);
         }
 
         public WorkOrderRecord withSequence(long sequence) {
             return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
                     blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
-                    priority, sequence, status, progress, totalPlacements, issue, requestedBy);
+                    priority(), sequence, status(), progress(), totalPlacements(), issue(), requestedBy());
         }
 
         public WorkOrderRecord withProgress(int newProgress, int newTotal) {
             return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
                     blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
-                    priority, createdSequence, status, newProgress, newTotal, issue, requestedBy);
+                    priority(), createdSequence(), status(), newProgress, newTotal, issue(), requestedBy());
         }
 
         public WorkOrderRecord withStatus(String newStatus, String newIssue) {
             return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
                     blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
-                    priority, createdSequence, newStatus, progress, totalPlacements, newIssue, requestedBy);
+                    priority(), createdSequence(), newStatus, progress(), totalPlacements(), newIssue, requestedBy());
         }
 
         private static boolean validUuid(String value) {
