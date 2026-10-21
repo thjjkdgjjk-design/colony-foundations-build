@@ -167,7 +167,8 @@ public final class ColonyClaimState extends PersistentState {
         if (colonyUuid == null) return false;
         ClaimRecord colony = findColony(colonyUuid).orElse(null);
         return colony != null && colony.dimension().equals(order.dimension())
-                && colony.center().asLong() == order.townHallPosition();
+                && colony.center().asLong() == order.townHallPosition()
+                && colony.contains(BlockPos.fromLong(order.sitePosition()));
     }
 
     private boolean isBuildingRecordAnchored(BuildingRecord building) {
