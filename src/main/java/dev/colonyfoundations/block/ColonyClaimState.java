@@ -380,6 +380,9 @@ public final class ColonyClaimState extends PersistentState {
             return Optional.of(replacement);
         }
 
+        // Resolve every conflict before mutating any queued record. A later active/progressed
+        // conflict must reject the new order without partially cancelling earlier queued work.
+        List<String> replaceableQueuedConflicts = new ArrayList<>();
         for (Map.Entry<String, WorkOrderRecord> entry : workOrders.entrySet()) {
             WorkOrderRecord competing = entry.getValue();
             if (!competing.isValid() || !competing.colonyId().equals(requested.colonyId())
@@ -389,10 +392,16 @@ public final class ColonyClaimState extends PersistentState {
             ColonyWorkOrderStatus competingStatus = ColonyWorkOrderStatus.parse(competing.status()).orElse(null);
             if (competing.progress() == 0 && (competingStatus == ColonyWorkOrderStatus.QUEUED
                     || competingStatus == ColonyWorkOrderStatus.BLOCKED)) {
-                workOrders.put(entry.getKey(), competing.withStatus(ColonyWorkOrderStatus.CANCELLED.id(),
-                        "Replaced by a newer queued order"));
+                replaceableQueuedConflicts.add(entry.getKey());
             } else {
                 return Optional.empty();
+            }
+        }
+        for (String conflictingOrderId : replaceableQueuedConflicts) {
+            WorkOrderRecord competing = workOrders.get(conflictingOrderId);
+            if (competing != null) {
+                workOrders.put(conflictingOrderId, competing.withStatus(ColonyWorkOrderStatus.CANCELLED.id(),
+                        "Replaced by a newer queued order"));
             }
         }
 

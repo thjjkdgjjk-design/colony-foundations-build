@@ -8,6 +8,7 @@ import net.minecraft.world.World;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -115,6 +116,43 @@ class ColonyCitizenAssignmentTest {
         assertEquals(first.orderId(), queue.get(1).orderId());
         assertTrue(state.upsertWorkOrder(queue.get(0).withStatus("active", "")).isPresent());
         assertEquals(5, state.workOrder(UUID.fromString(second.orderId())).orElseThrow().priority());
+    }
+
+    @Test
+    void rejectedSameSiteOrderDoesNotPartiallyCancelEarlierQueuedWork() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        BlockPos site = new BlockPos(5, 63, -3);
+        ColonyClaimState.ClaimRecord claim = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", townHall.asLong(), ownerId.toString(), List.of(),
+                colonyId.toString(), "Test colony", "Owner", 1);
+
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 1, "queued", 0, 3, "", ownerId.toString());
+        ColonyClaimState.WorkOrderRecord active = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 2, "active", 1, 3, "", ownerId.toString());
+
+        Map<String, ColonyClaimState.WorkOrderRecord> savedOrders = new LinkedHashMap<>();
+        savedOrders.put(queued.orderId(), queued);
+        savedOrders.put(active.orderId(), active);
+        ColonyClaimState state = new ColonyClaimState(
+                Map.of("claim", claim), Map.of(), Map.of(), savedOrders);
+        ColonyClaimState.WorkOrderRecord requested = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:other_cottage", "build",
+                0, 1, 1, 0, 5, -3, 1, 0, "queued", 0, 3, "", ownerId.toString());
+
+        assertTrue(state.upsertWorkOrder(requested).isEmpty(),
+                "An active/progressed order must reject the conflicting request.");
+        assertEquals("queued", state.workOrder(UUID.fromString(queued.orderId())).orElseThrow().status(),
+                "The rejected request must not have cancelled the earlier queued order.");
+        assertEquals("active", state.workOrder(UUID.fromString(active.orderId())).orElseThrow().status());
+        assertEquals(2, state.workOrdersForColony(colonyId).size());
     }
 
     @Test
