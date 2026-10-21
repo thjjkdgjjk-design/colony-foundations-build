@@ -33,3 +33,10 @@
 - On BUILD completion, register the structure in the persistent colony directory and retry registration after reload if a completed Town Hall record survived without the structure record.
 - Queue and GUI start paths now reject placements outside the colony footprint, overlaps with existing structures/hut anchors, and overlaps with other non-terminal work orders.
 - Added footprint geometry, site conflict, blueprint metadata and codec round-trip coverage. UPGRADE/REPAIR/REMOVE execution still remains unfinished; no in-game test was run.
+
+## 2026-10-21 — Conservative REPAIR work orders
+
+- Added `/colony repair <hall> <building> <priority>` to queue a REPAIR only against a completed registered blueprint whose style, rotation, level and footprint match the available datapack.
+- Persisted active work-order type/current level/target level in Town Hall NBT and updated scheduler/sync to preserve REPAIR rather than rewriting it as BUILD.
+- The shared builder executor repairs missing/replaceable cells and skips correct cells; a solid mismatch blocks rather than overwrites. Builder capability uses colony level as a temporary proxy until original Builder Hut/job-skill semantics exist.
+- Added state regression coverage for target-footprint exclusion and repair level semantics. No gameplay test has been run.
