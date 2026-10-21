@@ -18,3 +18,5 @@
 - Added allowed status edges to the persistent work-order store and rejected invalid transitions before mutation.
 - Added regression coverage for queue skipping directly to completion, moving active orders backward to queued, and completing blocked/paused work without resuming it.
 - Implementation is on the feature branch; CI for the exact commit is pending. No Minecraft gameplay test was run.
+
+- CI follow-up: adjusted an existing completion test to use the now-enforced lifecycle sequence `queued -> active -> completed`; direct queued-to-terminal completion remains rejected. The fix awaits a fresh CI run.

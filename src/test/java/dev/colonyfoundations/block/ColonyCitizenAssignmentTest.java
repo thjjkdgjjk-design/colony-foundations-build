@@ -252,7 +252,8 @@ class ColonyCitizenAssignmentTest {
                 townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
                 0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
         var stored = state.upsertWorkOrder(queued).orElseThrow();
-        var completed = state.upsertWorkOrder(stored.withProgress(3, 3)
+        var active = state.upsertWorkOrder(stored.withStatus("active", "")).orElseThrow();
+        var completed = state.upsertWorkOrder(active.withProgress(3, 3)
                 .withStatus("completed", "")).orElseThrow();
         assertEquals("completed", completed.status());
         assertTrue(state.upsertWorkOrder(completed.withStatus("active", "")).isEmpty());
