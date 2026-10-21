@@ -2,6 +2,7 @@ package dev.colonyfoundations.command;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import dev.colonyfoundations.block.ColonyPermission;
 import dev.colonyfoundations.block.ColonyClaimState;
 import dev.colonyfoundations.block.ColonyRank;
@@ -12,6 +13,7 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 
 import static net.minecraft.server.command.CommandManager.argument;
@@ -91,6 +93,28 @@ public final class ColonyManagementCommands {
                             .executes(context -> listWorkOrders(context.getSource(),
                                     BlockPosArgumentType.getBlockPos(context, "hall")))));
 
+            var queueCommand = literal("queue");
+            var queueHall = argument("hall", BlockPosArgumentType.blockPos());
+            var queueBlueprint = argument("blueprint", StringArgumentType.word());
+            var queueRotation = argument("rotation", IntegerArgumentType.integer(0, 3));
+            var queueOffsetX = argument("offset_x", IntegerArgumentType.integer(-64, 64));
+            var queueOffsetZ = argument("offset_z", IntegerArgumentType.integer(-64, 64));
+            var queuePriority = argument("priority", IntegerArgumentType.integer(-10, 10));
+            queuePriority.executes(context -> queueBuildOrder(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    StringArgumentType.getString(context, "blueprint"),
+                    IntegerArgumentType.getInteger(context, "rotation"),
+                    IntegerArgumentType.getInteger(context, "offset_x"),
+                    IntegerArgumentType.getInteger(context, "offset_z"),
+                    IntegerArgumentType.getInteger(context, "priority")));
+            queueOffsetZ.then(queuePriority);
+            queueOffsetX.then(queueOffsetZ);
+            queueRotation.then(queueOffsetX);
+            queueBlueprint.then(queueRotation);
+            queueHall.then(queueBlueprint);
+            queueCommand.then(queueHall);
+            root.then(queueCommand);
+
             var rankPermissionCommand = literal("rank-permission");
             var rankPermissionHall = argument("hall", BlockPosArgumentType.blockPos());
             var rankPermissionRank = argument("rank", StringArgumentType.word());
@@ -109,6 +133,20 @@ public final class ColonyManagementCommands {
 
             dispatcher.register(root);
         });
+    }
+
+    private static int queueBuildOrder(ServerCommandSource source, BlockPos pos, String blueprintId,
+                                       int rotation, int offsetX, int offsetZ, int priority)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null) return 0;
+        Identifier identifier = Identifier.tryParse(blueprintId);
+        if (identifier == null) {
+            player.sendMessage(Text.literal("Invalid blueprint identifier."), true);
+            return 0;
+        }
+        return hall.queueBuildOrder(identifier, rotation, offsetX, offsetZ, priority, player) ? 1 : 0;
     }
 
     private static int listWorkOrders(ServerCommandSource source, BlockPos pos)

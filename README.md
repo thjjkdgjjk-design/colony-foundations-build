@@ -44,3 +44,10 @@ The model persists `OWNER/OFFICER/FRIEND/NEUTRAL/HOSTILE` rank IDs and profile a
 ### Durable work-order history (experimental)
 
 The current Town Hall BUILD project now mirrors its order ID, blueprint, site, rotation, requester, lifecycle status, progress and obstruction reason into the world-persistent colony directory. Use `/colony work-orders <x> <y> <z>` near the Town Hall to inspect recorded orders (requires `build_projects`). This is a history/state foundation, not a full queue: BUILD still uses the single existing Town Hall executor; actual UPGRADE, REPAIR and REMOVE execution, parallel orders, priorities in scheduling, and building-module workflows remain unimplemented.
+
+
+### Queued BUILD orders (experimental)
+
+- `/colony queue <x> <y> <z> <blueprint_id> <rotation 0-3> <offset_x> <offset_z> <priority -10..10>` adds another BUILD order without replacing the order currently being executed.
+- When the Town Hall executor is idle or its current BUILD finishes, the highest-priority queued BUILD for that Town Hall is promoted automatically. Ties use creation sequence. Construction still uses one executor and a shared Town Hall inventory; materials needed across active and queued BUILD orders are counted together.
+- Queueing currently supports BUILD only. UPGRADE, REPAIR and REMOVE have validated state/level models but no real placement executors yet. Check a world backup before testing and verify the queue in Minecraft; CI alone is not a gameplay test.

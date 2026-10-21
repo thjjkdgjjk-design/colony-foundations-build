@@ -370,6 +370,7 @@ public final class ColonyClaimState extends PersistentState {
                 if (!replaceableQueuedOrder) return Optional.empty();
             }
             WorkOrderRecord replacement = requested.withSequence(existing.createdSequence())
+                    .withPriority(existing.priority())
                     .withProgress(Math.max(existing.progress(), requested.progress()),
                             Math.max(existing.totalPlacements(), requested.totalPlacements()));
             if (!replacement.equals(existing)) {
@@ -677,6 +678,12 @@ public final class ColonyClaimState extends PersistentState {
             return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
                     blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
                     priority(), sequence, status(), progress(), totalPlacements(), issue(), requestedBy());
+        }
+
+        public WorkOrderRecord withPriority(int newPriority) {
+            return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
+                    blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
+                    newPriority, createdSequence(), status(), progress(), totalPlacements(), issue(), requestedBy());
         }
 
         public WorkOrderRecord withProgress(int newProgress, int newTotal) {

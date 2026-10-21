@@ -90,6 +90,34 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void queuedWorkOrdersSortByPriorityThenSequenceAndUseDifferentSites() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+
+        ColonyClaimState.WorkOrderRecord normal = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(5, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        ColonyClaimState.WorkOrderRecord urgent = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(20, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 20, -3, 5, 0, "queued", 0, 3, "", ownerId.toString());
+
+        var first = state.upsertWorkOrder(normal).orElseThrow();
+        var second = state.upsertWorkOrder(urgent).orElseThrow();
+        var queue = state.workOrdersForColony(colonyId);
+
+        assertEquals(1, first.createdSequence());
+        assertEquals(2, second.createdSequence());
+        assertEquals(second.orderId(), queue.get(0).orderId());
+        assertEquals(first.orderId(), queue.get(1).orderId());
+        assertTrue(state.upsertWorkOrder(queue.get(0).withStatus("active", "")).isPresent());
+        assertEquals(5, state.workOrder(UUID.fromString(second.orderId())).orElseThrow().priority());
+    }
+
+    @Test
     void terminalWorkOrdersCannotBeReactivatedAndSequencesStayStable() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
