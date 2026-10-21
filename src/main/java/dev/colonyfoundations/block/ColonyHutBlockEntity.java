@@ -75,6 +75,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         if (safeLevel == buildingLevel) return false;
         buildingLevel = safeLevel;
         markDirty();
+        if (world instanceof ServerWorld serverWorld) ColonyProtection.registerHut(serverWorld, pos);
         return true;
     }
 
@@ -445,6 +446,7 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         String ownAssignmentTag = assignmentTag();
 
         ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        ColonyProtection.registerHut(serverWorld, pos);
         String dimensionId = serverWorld.getRegistryKey().getValue().toString();
         ColonyClaimState.ClaimRecord colony = directory.findColonyAt(dimensionId, pos).orElse(null);
         UUID colonyUuid = colony == null ? null

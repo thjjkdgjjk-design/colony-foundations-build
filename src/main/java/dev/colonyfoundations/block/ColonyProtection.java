@@ -97,17 +97,25 @@ public final class ColonyProtection {
                 .add(stablePos);
 
         if (world.getBlockEntity(stablePos) instanceof TownHallBlockEntity hall) {
-            UUID durableId = ColonyClaimState.get(world).upsert(
+            ColonyClaimState directory = ColonyClaimState.get(world);
+            UUID durableId = directory.upsert(
                     world.getRegistryKey(), stablePos, hall.colonyOwnerUuid(), hall.colonyMembers(),
                     hall.colonyUuid(), hall.colonyName(), hall.colonyOwnerName(), hall.colonyLevel(),
                     hall.colonyMemberPermissions());
             hall.setColonyUuid(durableId);
+            if (durableId != null) {
+                directory.registerBuilding(durableId, world.getRegistryKey(), stablePos,
+                        "colony_foundations:town_hall", hall.colonyLevel());
+            } else {
+                directory.unregisterBuilding(world.getRegistryKey(), stablePos);
+            }
         }
     }
 
     public static void unregisterTownHall(ServerWorld world, BlockPos pos) {
         // Persistent record removal is independent of whether the chunk-index cache still exists.
         ColonyClaimState.get(world).remove(world.getRegistryKey(), pos);
+        ColonyClaimState.get(world).unregisterBuilding(world.getRegistryKey(), pos);
         Map<Long, Set<BlockPos>> byChunk = TOWN_HALLS_BY_DIMENSION.get(world.getRegistryKey());
         if (byChunk == null) return;
         long key = chunkKey(pos.getX() >> 4, pos.getZ() >> 4);
@@ -120,9 +128,29 @@ public final class ColonyProtection {
     }
 
     private static void indexChunk(ServerWorld world, WorldChunk chunk) {
+        // Register Town Halls first so huts in the same newly-loaded chunk can resolve their colony.
         for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
             if (blockEntity instanceof TownHallBlockEntity) registerTownHall(world, blockEntity.getPos());
         }
+        for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
+            if (blockEntity instanceof ColonyHutBlockEntity) registerHut(world, blockEntity.getPos());
+        }
+    }
+
+    /** Upsert a typed work-building record when a hut is placed or its chunk is loaded. */
+    public static boolean registerHut(ServerWorld world, BlockPos pos) {
+        if (!(world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut)) return false;
+        ColonyClaimState directory = ColonyClaimState.get(world);
+        String dimension = world.getRegistryKey().getValue().toString();
+        ColonyClaimState.ClaimRecord colony = directory.findColonyAt(dimension, pos).orElse(null);
+        UUID colonyUuid = colony == null
+                ? null : ColonyIdentityRules.parseUuid(colony.colonyId()).orElse(null);
+        return colonyUuid != null && directory.registerBuilding(colonyUuid, world.getRegistryKey(), pos,
+                "colony_foundations:" + hut.hutId(), hut.buildingLevel());
+    }
+
+    public static void unregisterHut(ServerWorld world, BlockPos pos) {
+        ColonyClaimState.get(world).unregisterBuilding(world.getRegistryKey(), pos);
     }
 
     private static void removeChunk(ServerWorld world, ChunkPos pos) {

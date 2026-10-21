@@ -9,6 +9,7 @@ import net.minecraft.block.BlockWithEntity;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.BlockEntityTicker;
 import net.minecraft.block.entity.BlockEntityType;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
@@ -103,10 +104,20 @@ public final class ColonyHutBlock extends BlockWithEntity {
     }
 
     @Override
+    public void onPlaced(World world, BlockPos pos, BlockState state, LivingEntity placer, ItemStack itemStack) {
+        super.onPlaced(world, pos, state, placer, itemStack);
+        if (!world.isClient && world instanceof ServerWorld serverWorld) {
+            ColonyProtection.registerHut(serverWorld, pos);
+        }
+    }
+
+    @Override
     public void onStateReplaced(BlockState state, ServerWorld world, BlockPos pos, boolean moved) {
-        if (!world.getBlockState(pos).isOf(this)
-                && world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut) {
-            hut.releaseAssignedCitizen(world);
+        if (!world.getBlockState(pos).isOf(this)) {
+            if (world.getBlockEntity(pos) instanceof ColonyHutBlockEntity hut) {
+                hut.releaseAssignedCitizen(world);
+            }
+            ColonyProtection.unregisterHut(world, pos);
         }
         super.onStateReplaced(state, world, pos, moved);
     }
