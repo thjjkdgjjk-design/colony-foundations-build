@@ -139,6 +139,19 @@ public final class ColonyManagementCommands {
             queueCommand.then(queueHall);
             root.then(queueCommand);
 
+            var repairCommand = literal("repair");
+            var repairHall = argument("hall", BlockPosArgumentType.blockPos());
+            var repairBuilding = argument("building", BlockPosArgumentType.blockPos());
+            var repairPriority = argument("priority", IntegerArgumentType.integer(-10, 10));
+            repairPriority.executes(context -> queueRepairWorkOrder(context.getSource(),
+                    BlockPosArgumentType.getBlockPos(context, "hall"),
+                    BlockPosArgumentType.getBlockPos(context, "building"),
+                    IntegerArgumentType.getInteger(context, "priority")));
+            repairBuilding.then(repairPriority);
+            repairHall.then(repairBuilding);
+            repairCommand.then(repairHall);
+            root.then(repairCommand);
+
             var rankPermissionCommand = literal("rank-permission");
             var rankPermissionHall = argument("hall", BlockPosArgumentType.blockPos());
             var rankPermissionRank = argument("rank", StringArgumentType.word());
@@ -207,6 +220,15 @@ public final class ColonyManagementCommands {
             return 0;
         }
         return hall.queueBuildOrder(identifier, rotation, offsetX, offsetZ, priority, player) ? 1 : 0;
+    }
+
+    private static int queueRepairWorkOrder(ServerCommandSource source, BlockPos hallPos,
+                                              BlockPos buildingPos, int priority)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, hallPos);
+        if (hall == null) return 0;
+        return hall.queueRepairOrder(buildingPos, priority, player) ? 1 : 0;
     }
 
     private static int listWorkOrders(ServerCommandSource source, BlockPos pos)

@@ -292,6 +292,40 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void repairOrderUsesRegisteredBlueprintLevelAndCanIgnoreOnlyItsOwnFootprint() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        BlockPos site = new BlockPos(8, 63, 8);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        String blueprintId = "colony_foundations:cottage";
+        ColonyBuildingFootprint footprint = new ColonyBuildingFootprint(
+                new BlockPos(8, 63, 8), new BlockPos(12, 68, 12));
+        assertTrue(state.registerBlueprintBuilding(colonyId, OVERWORLD, site, blueprintId, 1,
+                blueprintId, 2, footprint));
+
+        assertFalse(state.isBlueprintFootprintAvailable(colonyId, "minecraft:overworld", footprint));
+        assertTrue(state.isBlueprintFootprintAvailable(colonyId, "minecraft:overworld", footprint, site));
+
+        ColonyClaimState.WorkOrderRecord repair = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), blueprintId, "repair",
+                1, 1, 1, 2, 8, 8, 3, 0, "queued", 0, 12, "", ownerId.toString());
+        var queued = state.upsertWorkOrder(repair).orElseThrow();
+        assertEquals("repair", queued.type());
+        assertEquals(1, queued.currentLevel());
+        assertEquals(1, queued.targetLevel());
+        assertEquals(site.asLong(), queued.sitePosition());
+        assertTrue(ColonyWorkOrderRules.validLevelTransition(ColonyWorkOrderType.REPAIR, 1, 1, 1));
+        assertFalse(ColonyWorkOrderRules.validLevelTransition(ColonyWorkOrderType.REPAIR, 2, 2, 1));
+
+        assertFalse(state.registerBlueprintBuilding(colonyId, OVERWORLD, new BlockPos(10, 63, 10),
+                blueprintId, 1, blueprintId, 0,
+                new ColonyBuildingFootprint(new BlockPos(10, 63, 10), new BlockPos(14, 69, 14))));
+        assertTrue(ColonyWorkOrderStatus.QUEUED.canTransitionTo(ColonyWorkOrderStatus.ACTIVE));
+    }
+
+    @Test
     void persistentCodecRoundTripsQueuedWorkOrdersAndReadsLegacyClaimSaves() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();

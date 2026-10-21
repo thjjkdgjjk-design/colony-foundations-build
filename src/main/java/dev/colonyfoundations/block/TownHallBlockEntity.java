@@ -59,8 +59,11 @@ public final class TownHallBlockEntity extends BlockEntity {
     /** Last durable reason construction paused; empty when no known blocker exists. */
     private String projectIssue = "";
     private UUID assignedBuilderUuid;
-    /** Durable identifier for the current Town Hall BUILD work order. */
+    /** Durable identifier for the current Town Hall BUILD/REPAIR work order. */
     private UUID activeWorkOrderUuid;
+    private ColonyWorkOrderType activeWorkOrderType = ColonyWorkOrderType.BUILD;
+    private int activeWorkOrderCurrentLevel;
+    private int activeWorkOrderTargetLevel = 1;
     private String projectRequestedByUuid = "";
     private long lastWorkOrderSyncWarning = -1000L;
     private BlockPos lastBuilderPosition;
@@ -391,6 +394,78 @@ public final class TownHallBlockEntity extends BlockEntity {
         return true;
     }
 
+    public boolean queueRepairOrder(BlockPos buildingPosition, int priority, ServerPlayerEntity player) {
+        if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
+            return false;
+        }
+        if (colonyUuid == null || buildingPosition == null) {
+            player.sendMessage(Text.literal("Found the colony before queuing a repair."), true);
+            return false;
+        }
+        ServerWorld serverWorld = player.getServerWorld();
+        ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        String dimensionId = serverWorld.getRegistryKey().getValue().toString();
+        ColonyClaimState.BuildingRecord building =
+                directory.findBuilding(dimensionId, buildingPosition).orElse(null);
+        if (building == null || !building.hasBlueprint()
+                || !colonyUuid.toString().equals(building.colonyId())) {
+            player.sendMessage(Text.literal("REPAIR requires a completed, registered blueprint building in this colony."), true);
+            return false;
+        }
+
+        BlockPos site = building.center();
+        if (site.getY() != pos.getY() - 1) {
+            player.sendMessage(Text.literal("This executor supports repair sites one block below the Town Hall; use a Town Hall aligned with the building site."), true);
+            return false;
+        }
+        int offsetX = site.getX() - pos.getX();
+        int offsetZ = site.getZ() - pos.getZ();
+        if (offsetX < -64 || offsetX > 64 || offsetZ < -64 || offsetZ > 64) {
+            player.sendMessage(Text.literal("The building is outside the supported Town Hall work-order offset range (-64..64)."), true);
+            return false;
+        }
+
+        Identifier storedBlueprintId = Identifier.tryParse(building.blueprintId());
+        BlueprintDefinition definition = storedBlueprintId == null ? null
+                : BlueprintRegistry.getBuildDefinition(storedBlueprintId).orElse(null);
+        ColonyBuildingFootprint currentFootprint = blueprintFootprint(definition, site, building.rotation());
+        if (definition == null || definition.placements().isEmpty()
+                || currentFootprint == null || !currentFootprint.equals(building.footprint())) {
+            player.sendMessage(Text.literal("The registered schematic is missing or has changed since construction; repair was not queued."), true);
+            return false;
+        }
+
+        int level = building.level();
+        int builderLevel = Math.max(1, Math.min(5, colonyLevel));
+        if (!ColonyWorkOrderRules.validLevelTransition(
+                ColonyWorkOrderType.REPAIR, level, level, builderLevel)) {
+            player.sendMessage(Text.literal("The colony's current builder capability does not meet the recorded building level."), true);
+            return false;
+        }
+        if (!directory.isBlueprintFootprintAvailable(colonyUuid, dimensionId, currentFootprint, site)
+                || overlapsOtherPendingWorkOrder(directory, dimensionId, currentFootprint, null)) {
+            player.sendMessage(Text.literal("Repair was rejected because another building or pending order overlaps this footprint."), true);
+            return false;
+        }
+
+        ColonyClaimState.WorkOrderRecord requested = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyUuid.toString(), dimensionId,
+                pos.asLong(), site.asLong(), building.blueprintId(), ColonyWorkOrderType.REPAIR.id(),
+                level, level, builderLevel, building.rotation(), offsetX, offsetZ,
+                Math.max(-10, Math.min(10, priority)), 0L, ColonyWorkOrderStatus.QUEUED.id(),
+                0, definition.placements().size(), "", player.getUuid().toString());
+        var stored = directory.upsertWorkOrder(requested);
+        if (stored.isEmpty()) {
+            player.sendMessage(Text.literal("The repair order conflicted with an existing work order or failed persistence validation."), true);
+            return false;
+        }
+        player.sendMessage(Text.literal("Queued REPAIR #" + stored.get().createdSequence()
+                + " for " + building.blueprintId() + " at " + site.toShortString()
+                + " (priority " + stored.get().priority() + ")."), false);
+        return true;
+    }
+
     public void startProject(Identifier newBlueprintId, int quarterTurns, int requestedOffsetX, int requestedOffsetZ, PlayerEntity player) {
         if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
             player.sendMessage(Text.literal("You do not have build_projects permission for this colony."), true);
@@ -433,6 +508,9 @@ public final class TownHallBlockEntity extends BlockEntity {
             projectIssue = "";
         } else {
             activeWorkOrderUuid = UUID.randomUUID();
+            activeWorkOrderType = ColonyWorkOrderType.BUILD;
+            activeWorkOrderCurrentLevel = 0;
+            activeWorkOrderTargetLevel = 1;
             projectRequestedByUuid = player.getUuid().toString();
             blueprintId = newBlueprintId;
             rotation = Math.floorMod(quarterTurns, 4);
@@ -973,11 +1051,12 @@ public final class TownHallBlockEntity extends BlockEntity {
         BlockPos site = hallPos.add(siteOffsetX, -1, siteOffsetZ);
         ColonyBuildingFootprint footprint = blueprintFootprint(definition, site, rotation);
         if (footprint == null) return false;
-        int targetLevel = 1;
+        int targetLevel = Math.max(1, Math.min(5, activeWorkOrderTargetLevel));
         if (activeWorkOrderUuid != null) {
             ColonyClaimState.WorkOrderRecord saved = ColonyClaimState.get(world)
                     .workOrder(activeWorkOrderUuid).orElse(null);
-            if (saved != null && ColonyWorkOrderType.BUILD.id().equals(saved.type())) {
+            if (saved != null && (ColonyWorkOrderType.BUILD.id().equals(saved.type())
+                    || ColonyWorkOrderType.REPAIR.id().equals(saved.type()))) {
                 targetLevel = Math.max(1, Math.min(5, saved.targetLevel()));
             }
         }
@@ -990,23 +1069,47 @@ public final class TownHallBlockEntity extends BlockEntity {
     private boolean activateNextQueuedWorkOrder(ServerWorld serverWorld, BlockPos hallPos) {
         if (colonyUuid == null) return false;
         ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        String dimensionId = serverWorld.getRegistryKey().getValue().toString();
         for (ColonyClaimState.WorkOrderRecord order : directory.workOrdersForColony(colonyUuid)) {
+            ColonyWorkOrderType orderType = ColonyWorkOrderType.parse(order.type()).orElse(null);
             if (!ColonyWorkOrderStatus.QUEUED.id().equals(order.status())
-                    || !ColonyWorkOrderType.BUILD.id().equals(order.type())
+                    || (orderType != ColonyWorkOrderType.BUILD && orderType != ColonyWorkOrderType.REPAIR)
                     || order.townHallPosition() != hallPos.asLong()) continue;
 
             Identifier nextBlueprintId = Identifier.tryParse(order.blueprintId());
             BlueprintDefinition definition = nextBlueprintId == null ? null
                     : BlueprintRegistry.getBuildDefinition(nextBlueprintId).orElse(null);
+            BlockPos site = BlockPos.fromLong(order.sitePosition());
+            ColonyBuildingFootprint footprint = blueprintFootprint(definition, site, order.rotation());
+            String blocker = "";
             if (definition == null || definition.placements().isEmpty()
                     || order.progress() > definition.placements().size()
-                    || hallPos.add(order.offsetX(), -1, order.offsetZ()).asLong() != order.sitePosition()) {
-                directory.upsertWorkOrder(order.withStatus(ColonyWorkOrderStatus.BLOCKED.id(),
-                        "Blueprint missing/empty or persisted site no longer matches its offsets"));
+                    || hallPos.add(order.offsetX(), -1, order.offsetZ()).asLong() != order.sitePosition()
+                    || footprint == null) {
+                blocker = "Blueprint missing/empty or persisted site no longer matches its offsets";
+            } else if (!ColonyWorkOrderRules.validLevelTransition(
+                    orderType, order.currentLevel(), order.targetLevel(), order.builderLevel())) {
+                blocker = "The work order has an invalid level transition or exceeds builder capability";
+            } else if (orderType == ColonyWorkOrderType.BUILD
+                    && !directory.isBlueprintFootprintAvailable(colonyUuid, dimensionId, footprint)) {
+                blocker = "BUILD footprint is no longer available; a registered building overlaps it";
+            } else if (orderType == ColonyWorkOrderType.REPAIR
+                    && !hasMatchingRepairTarget(directory, dimensionId, order, footprint)) {
+                blocker = "REPAIR target is missing, its blueprint/rotation/level changed, or its footprint is occupied";
+            } else if (overlapsOtherPendingWorkOrder(
+                    directory, dimensionId, footprint, UUID.fromString(order.orderId()))) {
+                blocker = "Another non-terminal order overlaps the persisted footprint";
+            }
+
+            if (!blocker.isBlank()) {
+                directory.upsertWorkOrder(order.withStatus(ColonyWorkOrderStatus.BLOCKED.id(), blocker));
                 continue;
             }
 
             activeWorkOrderUuid = UUID.fromString(order.orderId());
+            activeWorkOrderType = orderType;
+            activeWorkOrderCurrentLevel = order.currentLevel();
+            activeWorkOrderTargetLevel = order.targetLevel();
             projectRequestedByUuid = order.requestedBy();
             blueprintId = nextBlueprintId;
             rotation = order.rotation();
@@ -1022,8 +1125,8 @@ public final class TownHallBlockEntity extends BlockEntity {
             resetNavigationDiagnostics();
             markDirty();
             syncWorkOrder(serverWorld, hallPos);
-            Text message = Text.literal("[Колония] Начат следующий заказ BUILD #"
-                    + order.createdSequence() + ": " + order.blueprintId() + ".");
+            Text message = Text.literal("[Колония] Начат заказ " + orderType.id().toUpperCase()
+                    + " #" + order.createdSequence() + ": " + order.blueprintId() + ".");
             for (ServerPlayerEntity player : serverWorld.getPlayers()) {
                 if (player.squaredDistanceTo(hallPos.getX() + 0.5, hallPos.getY() + 0.5,
                         hallPos.getZ() + 0.5) <= 64.0) player.sendMessage(message, false);
@@ -1031,6 +1134,22 @@ public final class TownHallBlockEntity extends BlockEntity {
             return true;
         }
         return false;
+    }
+
+    private boolean hasMatchingRepairTarget(ColonyClaimState directory, String dimensionId,
+                                            ColonyClaimState.WorkOrderRecord order,
+                                            ColonyBuildingFootprint expectedFootprint) {
+        BlockPos site = BlockPos.fromLong(order.sitePosition());
+        ColonyClaimState.BuildingRecord building = directory.findBuilding(dimensionId, site).orElse(null);
+        return building != null && building.hasBlueprint()
+                && colonyUuid != null && colonyUuid.toString().equals(building.colonyId())
+                && building.blueprintId().equals(order.blueprintId())
+                && building.rotation() == order.rotation()
+                && building.level() == order.currentLevel()
+                && order.targetLevel() == order.currentLevel()
+                && building.footprint().equals(expectedFootprint)
+                && directory.isBlueprintFootprintAvailable(
+                        colonyUuid, dimensionId, expectedFootprint, site);
     }
 
     /**
@@ -1059,14 +1178,15 @@ public final class TownHallBlockEntity extends BlockEntity {
         ColonyClaimState.WorkOrderRecord draft = new ColonyClaimState.WorkOrderRecord(
                 activeWorkOrderUuid.toString(), colonyUuid.toString(),
                 serverWorld.getRegistryKey().getValue().toString(), hallPos.asLong(), site.asLong(),
-                blueprintId.toString(), ColonyWorkOrderType.BUILD.id(), 0, 1,
+                blueprintId.toString(), activeWorkOrderType.id(),
+                activeWorkOrderCurrentLevel, activeWorkOrderTargetLevel,
                 Math.max(1, Math.min(5, colonyLevel)), rotation, siteOffsetX, siteOffsetZ,
                 0, 0L, status, progress, total, projectIssue, projectRequestedByUuid);
         var stored = ColonyClaimState.get(serverWorld).upsertWorkOrder(draft);
         if (stored.isEmpty() && serverWorld.getTime() - lastWorkOrderSyncWarning >= 100L) {
             lastWorkOrderSyncWarning = serverWorld.getTime();
-            ColonyFoundations.LOGGER.warn("Could not persist BUILD work order {} for colony {} at {}",
-                    activeWorkOrderUuid, colonyUuid, hallPos);
+            ColonyFoundations.LOGGER.warn("Could not persist {} work order {} for colony {} at {}",
+                    activeWorkOrderType, activeWorkOrderUuid, colonyUuid, hallPos);
         } else if (stored.isPresent()) {
             activeWorkOrderUuid = UUID.fromString(stored.get().orderId());
         }
@@ -1083,6 +1203,9 @@ public final class TownHallBlockEntity extends BlockEntity {
         nbt.putBoolean("ProjectActive", projectActive);
         nbt.putBoolean("ProjectComplete", projectComplete);
         if (activeWorkOrderUuid != null) nbt.putString("ActiveWorkOrderUuid", activeWorkOrderUuid.toString());
+        nbt.putString("ActiveWorkOrderType", activeWorkOrderType.id());
+        nbt.putInt("ActiveWorkOrderCurrentLevel", activeWorkOrderCurrentLevel);
+        nbt.putInt("ActiveWorkOrderTargetLevel", activeWorkOrderTargetLevel);
         nbt.putString("ProjectRequestedByUuid", projectRequestedByUuid);
         nbt.putInt("Progress", progress);
         nbt.putInt("SkippedObstructions", skippedObstructions);
@@ -1148,6 +1271,18 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectComplete = nbt.getBoolean("ProjectComplete").orElse(false);
         activeWorkOrderUuid = ColonyIdentityRules.parseUuid(
                 nbt.getString("ActiveWorkOrderUuid").orElse("")).orElse(null);
+        activeWorkOrderType = ColonyWorkOrderType.parse(
+                nbt.getString("ActiveWorkOrderType").orElse("build"))
+                .filter(type -> type == ColonyWorkOrderType.BUILD || type == ColonyWorkOrderType.REPAIR)
+                .orElse(ColonyWorkOrderType.BUILD);
+        activeWorkOrderCurrentLevel = Math.max(0, nbt.getInt("ActiveWorkOrderCurrentLevel").orElse(0));
+        activeWorkOrderTargetLevel = Math.max(0, nbt.getInt("ActiveWorkOrderTargetLevel").orElse(1));
+        if (!ColonyWorkOrderRules.validLevelTransition(activeWorkOrderType,
+                activeWorkOrderCurrentLevel, activeWorkOrderTargetLevel, 5)) {
+            activeWorkOrderType = ColonyWorkOrderType.BUILD;
+            activeWorkOrderCurrentLevel = 0;
+            activeWorkOrderTargetLevel = 1;
+        }
         projectRequestedByUuid = ColonyIdentityRules.parseUuid(
                 nbt.getString("ProjectRequestedByUuid").orElse("")).map(UUID::toString).orElse("");
         progress = Math.max(0, nbt.getInt("Progress").orElse(0));

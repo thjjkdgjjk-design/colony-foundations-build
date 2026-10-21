@@ -348,11 +348,29 @@ public final class ColonyClaimState extends PersistentState {
      */
     public boolean isBlueprintFootprintAvailable(UUID colonyUuid, String dimension,
                                                  ColonyBuildingFootprint footprint) {
+        return isBlueprintFootprintAvailable(colonyUuid, dimension, footprint, null);
+    }
+
+    /** Validate a site, optionally excluding its own registered blueprint during repair. */
+    public boolean isBlueprintFootprintAvailable(UUID colonyUuid, String dimension,
+                                                 ColonyBuildingFootprint footprint,
+                                                 BlockPos ignoredBuildingAnchor) {
         if (colonyUuid == null || dimension == null || footprint == null) return false;
         ClaimRecord colony = findColony(colonyUuid).orElse(null);
         if (colony == null || !dimension.equals(colony.dimension())
                 || !colony.contains(footprint.min()) || !colony.contains(footprint.max())) return false;
-        return buildings.values().stream()
+        BuildingRecord ignored = null;
+        if (ignoredBuildingAnchor != null) {
+            ignored = buildings.get(recordKey(dimension, ignoredBuildingAnchor.asLong()));
+            if (ignored == null || !ignored.isValid() || !ignored.hasBlueprint()
+                    || !colonyUuid.toString().equals(ignored.colonyId())
+                    || !isBuildingRecordAnchored(ignored)) return false;
+        }
+        String ignoredKey = ignoredBuildingAnchor == null ? null
+                : recordKey(dimension, ignoredBuildingAnchor.asLong());
+        return buildings.entrySet().stream()
+                .filter(entry -> !entry.getKey().equals(ignoredKey))
+                .map(Map.Entry::getValue)
                 .filter(BuildingRecord::isValid)
                 .filter(this::isBuildingRecordAnchored)
                 .filter(building -> dimension.equals(building.dimension()))
