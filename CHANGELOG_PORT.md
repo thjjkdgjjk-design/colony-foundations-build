@@ -26,3 +26,10 @@
 - Added an encode/parse round trip for a queued work order and a legacy-save compatibility scenario where `citizens`, `buildings`, `work_orders` and new colony identity fields are absent.
 - Exposed the existing internal `PersistentState` codec package-privately for tests; no serialization format change was introduced.
 - Status: CI pending. This test does not substitute for an actual Minecraft world restart test.
+
+## 2026-10-21 — Persist completed blueprint structures
+
+- Extended the optional building-record codec with blueprint ID, rotation and world-space footprint bounds; older hut records continue to decode as point-sized records.
+- On BUILD completion, register the structure in the persistent colony directory and retry registration after reload if a completed Town Hall record survived without the structure record.
+- Queue and GUI start paths now reject placements outside the colony footprint, overlaps with existing structures/hut anchors, and overlaps with other non-terminal work orders.
+- Added footprint geometry, site conflict, blueprint metadata and codec round-trip coverage. UPGRADE/REPAIR/REMOVE execution still remains unfinished; no in-game test was run.

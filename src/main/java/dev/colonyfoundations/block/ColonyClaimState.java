@@ -47,7 +47,11 @@ public final class ColonyClaimState extends PersistentState {
             Codec.STRING.fieldOf("dimension").forGetter(BuildingRecord::dimension),
             Codec.LONG.fieldOf("position").forGetter(BuildingRecord::position),
             Codec.STRING.fieldOf("building_id").forGetter(BuildingRecord::buildingId),
-            Codec.INT.optionalFieldOf("level", 1).forGetter(BuildingRecord::level)
+            Codec.INT.optionalFieldOf("level", 1).forGetter(BuildingRecord::level),
+            Codec.STRING.optionalFieldOf("blueprint_id", "").forGetter(BuildingRecord::blueprintId),
+            Codec.INT.optionalFieldOf("rotation", 0).forGetter(BuildingRecord::rotation),
+            Codec.LONG.optionalFieldOf("bounds_min", 0L).forGetter(BuildingRecord::boundsMinPosition),
+            Codec.LONG.optionalFieldOf("bounds_max", 0L).forGetter(BuildingRecord::boundsMaxPosition)
     ).apply(instance, BuildingRecord::new));
 
     private static final Codec<WorkOrderMetadata> WORK_ORDER_METADATA_CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -182,7 +186,9 @@ public final class ColonyClaimState extends PersistentState {
         if (id == null) return false;
         ClaimRecord colony = findColony(id).orElse(null);
         return colony != null && colony.dimension().equals(building.dimension())
-                && colony.contains(building.center());
+                && colony.contains(building.center())
+                && colony.contains(building.footprint().min())
+                && colony.contains(building.footprint().max());
     }
 
     public static ColonyClaimState get(ServerWorld world) {
@@ -324,10 +330,66 @@ public final class ColonyClaimState extends PersistentState {
         String key = recordKey(dimensionId, position.asLong());
         BuildingRecord previous = buildings.get(key);
         if (replacement.equals(previous)) return true;
+        // Never replace a completed schematic record with a generic hut record; upgrades will
+        // need an explicit work-order transition rather than an incidental chunk-load callback.
+        if (previous != null && previous.hasBlueprint()) return false;
         if (previous != null && (!previous.colonyId().equals(replacement.colonyId())
                 || !previous.buildingId().equals(replacement.buildingId()))) {
             releaseAssignmentsAt(dimensionId, position.asLong());
         }
+        buildings.put(key, replacement);
+        markDirty();
+        return true;
+    }
+
+    /**
+     * Check that a proposed schematic footprint is wholly inside its colony and does not overlap
+     * any known building, including generic hut anchors and completed blueprint structures.
+     */
+    public boolean isBlueprintFootprintAvailable(UUID colonyUuid, String dimension,
+                                                 ColonyBuildingFootprint footprint) {
+        if (colonyUuid == null || dimension == null || footprint == null) return false;
+        ClaimRecord colony = findColony(colonyUuid).orElse(null);
+        if (colony == null || !dimension.equals(colony.dimension())
+                || !colony.contains(footprint.min()) || !colony.contains(footprint.max())) return false;
+        return buildings.values().stream()
+                .filter(BuildingRecord::isValid)
+                .filter(this::isBuildingRecordAnchored)
+                .filter(building -> dimension.equals(building.dimension()))
+                .noneMatch(building -> footprint.overlaps(building.footprint()));
+    }
+
+    /**
+     * Persist a completed schematic as a building record so later builds cannot occupy the same
+     * blocks and future UPGRADE/REPAIR/REMOVE orders can resolve the exact style and rotation.
+     */
+    public boolean registerBlueprintBuilding(UUID colonyUuid, RegistryKey<World> dimension,
+                                             BlockPos anchor, String buildingId, int level,
+                                             String blueprintId, int rotation,
+                                             ColonyBuildingFootprint footprint) {
+        if (colonyUuid == null || dimension == null || anchor == null || footprint == null
+                || Identifier.tryParse(buildingId) == null || Identifier.tryParse(blueprintId) == null
+                || level < 1 || level > 5) return false;
+        String dimensionId = dimension.getValue().toString();
+        ClaimRecord colony = findColony(colonyUuid).orElse(null);
+        if (colony == null || !dimensionId.equals(colony.dimension())
+                || !colony.contains(anchor) || !colony.contains(footprint.min())
+                || !colony.contains(footprint.max())) return false;
+        String key = recordKey(dimensionId, anchor.asLong());
+        BuildingRecord replacement = new BuildingRecord(colonyUuid.toString(), dimensionId,
+                anchor.asLong(), buildingId, level, blueprintId, rotation,
+                footprint.min().asLong(), footprint.max().asLong());
+        if (!replacement.isValid() || !footprint.contains(anchor)) return false;
+
+        BuildingRecord previous = buildings.get(key);
+        if (replacement.equals(previous)) return true;
+        if (previous != null) return false;
+        if (buildings.values().stream()
+                .filter(BuildingRecord::isValid)
+                .filter(this::isBuildingRecordAnchored)
+                .filter(building -> dimensionId.equals(building.dimension()))
+                .anyMatch(building -> footprint.overlaps(building.footprint()))) return false;
+
         buildings.put(key, replacement);
         markDirty();
         return true;
@@ -763,21 +825,46 @@ public final class ColonyClaimState extends PersistentState {
     }
 
     public record BuildingRecord(String colonyId, String dimension, long position,
-                                 String buildingId, int level) {
+                                 String buildingId, int level, String blueprintId, int rotation,
+                                 long boundsMinPosition, long boundsMaxPosition) {
         public BuildingRecord {
             colonyId = colonyId == null ? "" : colonyId;
             dimension = dimension == null ? "" : dimension;
             buildingId = buildingId == null ? "" : buildingId;
+            blueprintId = blueprintId == null ? "" : blueprintId;
             level = Math.max(1, Math.min(5, level));
+            rotation = Math.floorMod(rotation, 4);
+            // Legacy hut/block records are points, not large structures.
+            if (blueprintId.isBlank()) {
+                boundsMinPosition = position;
+                boundsMaxPosition = position;
+            }
+        }
+
+        /** Preserve the historic constructor and make old saves decode as point-sized hut records. */
+        public BuildingRecord(String colonyId, String dimension, long position, String buildingId, int level) {
+            this(colonyId, dimension, position, buildingId, level, "", 0, position, position);
         }
 
         public boolean isValid() {
             return validUuid(colonyId) && Identifier.tryParse(dimension) != null
-                    && Identifier.tryParse(buildingId) != null && level >= 1 && level <= 5;
+                    && Identifier.tryParse(buildingId) != null && level >= 1 && level <= 5
+                    && (blueprintId.isBlank()
+                        || (Identifier.tryParse(blueprintId) != null
+                            && ColonyBuildingFootprint.validPackedBounds(boundsMinPosition, boundsMaxPosition)));
         }
 
         public BlockPos center() {
             return BlockPos.fromLong(position);
+        }
+
+        public boolean hasBlueprint() {
+            return !blueprintId.isBlank() && Identifier.tryParse(blueprintId) != null;
+        }
+
+        public ColonyBuildingFootprint footprint() {
+            return new ColonyBuildingFootprint(
+                    BlockPos.fromLong(boundsMinPosition), BlockPos.fromLong(boundsMaxPosition));
         }
 
         public boolean acceptsAssignment(String roleId, String jobId) {

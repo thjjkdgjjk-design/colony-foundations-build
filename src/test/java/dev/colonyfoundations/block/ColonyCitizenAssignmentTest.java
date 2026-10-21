@@ -263,6 +263,35 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void blueprintBuildingDirectoryRejectsOverlapsAndKeepsItsBlueprintMetadata() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        BlockPos anchor = new BlockPos(10, 63, 10);
+        ColonyBuildingFootprint built = new ColonyBuildingFootprint(
+                new BlockPos(8, 63, 8), new BlockPos(14, 70, 14));
+        String id = "colony_foundations:cottage";
+
+        assertTrue(state.isBlueprintFootprintAvailable(colonyId, "minecraft:overworld", built));
+        assertTrue(state.registerBlueprintBuilding(colonyId, OVERWORLD, anchor, id, 1,
+                id, 1, built));
+        var record = state.findBuilding("minecraft:overworld", anchor).orElseThrow();
+        assertTrue(record.hasBlueprint());
+        assertEquals(id, record.blueprintId());
+        assertEquals(1, record.rotation());
+        assertEquals(built, record.footprint());
+
+        assertFalse(state.isBlueprintFootprintAvailable(colonyId, "minecraft:overworld",
+                new ColonyBuildingFootprint(new BlockPos(14, 65, 14), new BlockPos(18, 75, 18))));
+        assertTrue(state.isBlueprintFootprintAvailable(colonyId, "minecraft:overworld",
+                new ColonyBuildingFootprint(new BlockPos(15, 63, 8), new BlockPos(20, 70, 14))));
+        assertFalse(state.registerBlueprintBuilding(colonyId, OVERWORLD, new BlockPos(13, 63, 13),
+                id, 1, id, 0,
+                new ColonyBuildingFootprint(new BlockPos(12, 62, 12), new BlockPos(17, 71, 17))));
+    }
+
+    @Test
     void persistentCodecRoundTripsQueuedWorkOrdersAndReadsLegacyClaimSaves() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
@@ -276,8 +305,13 @@ class ColonyCitizenAssignmentTest {
                 orderId.toString(), colonyId.toString(), "minecraft:overworld",
                 townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
                 0, 1, 2, 1, 5, -3, 6, 8, "queued", 0, 3, "", ownerId.toString());
+        ColonyClaimState.BuildingRecord structure = new ColonyClaimState.BuildingRecord(
+                colonyId.toString(), "minecraft:overworld", site.asLong(),
+                "colony_foundations:cottage", 2, "colony_foundations:cottage", 1,
+                new BlockPos(3, 62, -5).asLong(), new BlockPos(7, 70, 0).asLong());
         ColonyClaimState before = new ColonyClaimState(
-                Map.of("claim", claim), Map.of(), Map.of(), Map.of(orderId.toString(), order));
+                Map.of("claim", claim), Map.of(), Map.of("structure", structure),
+                Map.of(orderId.toString(), order));
 
         NbtElement encoded = ColonyClaimState.persistenceCodec()
                 .encodeStart(NbtOps.INSTANCE, before).result().orElseThrow();
@@ -292,6 +326,13 @@ class ColonyCitizenAssignmentTest {
         assertEquals("queued", restoredOrder.status());
         assertEquals(site.asLong(), restoredOrder.sitePosition());
         assertEquals("colony_foundations:cottage", restoredOrder.blueprintId());
+        ColonyClaimState.BuildingRecord restoredBuilding =
+                restored.findBuilding("minecraft:overworld", site).orElseThrow();
+        assertEquals("colony_foundations:cottage", restoredBuilding.blueprintId());
+        assertEquals(2, restoredBuilding.level());
+        assertEquals(1, restoredBuilding.rotation());
+        assertEquals(new ColonyBuildingFootprint(new BlockPos(3, 62, -5), new BlockPos(7, 70, 0)),
+                restoredBuilding.footprint());
 
         // Simulate a prior save version that predates the citizen, building and order maps,
         // and predates the colony-identity fields on each claim record.

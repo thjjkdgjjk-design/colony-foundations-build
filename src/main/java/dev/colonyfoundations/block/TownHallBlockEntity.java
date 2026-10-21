@@ -315,6 +315,33 @@ public final class TownHallBlockEntity extends BlockEntity {
         return true;
     }
 
+    private static ColonyBuildingFootprint blueprintFootprint(
+            BlueprintDefinition definition, BlockPos site, int turns) {
+        if (definition == null || site == null || definition.placements().isEmpty()) return null;
+        BlockPos rotatedPrimary = rotate(definition.primaryOffset(), definition, turns);
+        List<BlockPos> worldPositions = definition.placements().stream()
+                .map(placement -> site.add(rotate(placement.offset(), definition, turns).subtract(rotatedPrimary)))
+                .toList();
+        return ColonyBuildingFootprint.fromWorldPositions(worldPositions).orElse(null);
+    }
+
+    private boolean overlapsOtherPendingWorkOrder(
+            ColonyClaimState directory, String dimension,
+            ColonyBuildingFootprint candidate, UUID ignoredOrder) {
+        if (colonyUuid == null || candidate == null) return true;
+        for (ColonyClaimState.WorkOrderRecord order : directory.workOrdersForColony(colonyUuid)) {
+            if (order.isTerminal() || !dimension.equals(order.dimension())) continue;
+            if (ignoredOrder != null && ignoredOrder.toString().equals(order.orderId())) continue;
+            Identifier orderBlueprint = Identifier.tryParse(order.blueprintId());
+            BlueprintDefinition other = orderBlueprint == null ? null
+                    : BlueprintRegistry.getBuildDefinition(orderBlueprint).orElse(null);
+            ColonyBuildingFootprint otherFootprint = blueprintFootprint(
+                    other, BlockPos.fromLong(order.sitePosition()), order.rotation());
+            if (otherFootprint != null && candidate.overlaps(otherFootprint)) return true;
+        }
+        return false;
+    }
+
     public boolean queueBuildOrder(Identifier requestedBlueprint, int quarterTurns,
                                    int requestedOffsetX, int requestedOffsetZ, int priority,
                                    ServerPlayerEntity player) {
@@ -336,6 +363,16 @@ public final class TownHallBlockEntity extends BlockEntity {
         int safeX = clampSiteOffset(requestedOffsetX);
         int safeZ = clampSiteOffset(requestedOffsetZ);
         BlockPos site = pos.add(safeX, -1, safeZ);
+        ServerWorld serverWorld = player.getServerWorld();
+        ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        String dimensionId = serverWorld.getRegistryKey().getValue().toString();
+        ColonyBuildingFootprint footprint = blueprintFootprint(definition, site, safeRotation);
+        if (footprint == null
+                || !directory.isBlueprintFootprintAvailable(colonyUuid, dimensionId, footprint)
+                || overlapsOtherPendingWorkOrder(directory, dimensionId, footprint, null)) {
+            player.sendMessage(Text.literal("The order was rejected: the full schematic footprint is outside this colony, overlaps a registered building, or conflicts with another pending order."), true);
+            return false;
+        }
         ColonyClaimState.WorkOrderRecord requested = new ColonyClaimState.WorkOrderRecord(
                 UUID.randomUUID().toString(), colonyUuid.toString(),
                 player.getServerWorld().getRegistryKey().getValue().toString(), pos.asLong(), site.asLong(),
@@ -343,7 +380,7 @@ public final class TownHallBlockEntity extends BlockEntity {
                 Math.max(1, Math.min(5, colonyLevel)), safeRotation, safeX, safeZ,
                 Math.max(-10, Math.min(10, priority)), 0L, ColonyWorkOrderStatus.QUEUED.id(),
                 0, definition.placements().size(), "", player.getUuid().toString());
-        var stored = ColonyClaimState.get(player.getServerWorld()).upsertWorkOrder(requested);
+        var stored = directory.upsertWorkOrder(requested);
         if (stored.isEmpty()) {
             player.sendMessage(Text.literal("The order was rejected: verify the site is inside this colony and no active order uses it."), true);
             return false;
@@ -374,6 +411,20 @@ public final class TownHallBlockEntity extends BlockEntity {
                 && progress == 0 && projectIssue.isBlank();
         boolean resumeSame = resumeQueuedSelection || BuildResumeRules.shouldResume(
                 blueprintId, newBlueprintId, projectActive, progress, projectComplete, projectIssue);
+        if (!resumeSame && player.getWorld() instanceof ServerWorld serverWorld) {
+            BlockPos requestedSite = pos.add(clampSiteOffset(requestedOffsetX), -1,
+                    clampSiteOffset(requestedOffsetZ));
+            ColonyBuildingFootprint requestedFootprint = blueprintFootprint(
+                    definition, requestedSite, Math.floorMod(quarterTurns, 4));
+            ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+            String dimensionId = serverWorld.getRegistryKey().getValue().toString();
+            if (requestedFootprint == null
+                    || !directory.isBlueprintFootprintAvailable(colonyUuid, dimensionId, requestedFootprint)
+                    || overlapsOtherPendingWorkOrder(directory, dimensionId, requestedFootprint, activeWorkOrderUuid)) {
+                player.sendMessage(Text.literal("[Колония] Нельзя начать стройку: площадка пересекается с существующим зданием или другим заказом."), true);
+                return;
+            }
+        }
         if (resumeSame) {
             if (activeWorkOrderUuid == null) activeWorkOrderUuid = UUID.randomUUID();
             if (projectRequestedByUuid.isBlank()) projectRequestedByUuid = player.getUuid().toString();
@@ -589,6 +640,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         ColonyProtection.registerTownHall(serverWorld, pos);
         if (serverWorld.getTime() % 10L != 0L) return;
         hall.syncWorkOrder(serverWorld, pos);
+        if (hall.projectComplete) hall.ensureCompletedBlueprintRegistered(serverWorld, pos);
         boolean idleWithoutSelection = hall.activeWorkOrderUuid == null
                 && !hall.projectComplete && !hall.projectActive && hall.progress == 0
                 && hall.projectIssue.isBlank();
@@ -891,6 +943,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     private void finish(ServerWorld world, VillagerEntity builder) {
         projectActive = false;
         projectComplete = true;
+        if (!ensureCompletedBlueprintRegistered(world, pos)) {
+            ColonyFoundations.LOGGER.warn("Completed blueprint {} at {} could not be registered in the colony building directory; check claim/site overlaps.",
+                    blueprintId, pos);
+        }
         UUID completedBuilderUuid = builder != null ? builder.getUuid() : assignedBuilderUuid;
         if (completedBuilderUuid != null) {
             ColonyClaimState directory = ColonyClaimState.get(world);
@@ -909,6 +965,25 @@ public final class TownHallBlockEntity extends BlockEntity {
         syncWorkOrder(world, pos);
         ColonyFoundations.LOGGER.info("Blueprint {} completed at {} in dimension {} ({} obstructed cells skipped).",
                 blueprintId, pos, world.getRegistryKey().getValue(), skippedObstructions);
+    }
+
+    private boolean ensureCompletedBlueprintRegistered(ServerWorld world, BlockPos hallPos) {
+        if (!projectComplete || colonyUuid == null) return false;
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(blueprintId).orElse(null);
+        BlockPos site = hallPos.add(siteOffsetX, -1, siteOffsetZ);
+        ColonyBuildingFootprint footprint = blueprintFootprint(definition, site, rotation);
+        if (footprint == null) return false;
+        int targetLevel = 1;
+        if (activeWorkOrderUuid != null) {
+            ColonyClaimState.WorkOrderRecord saved = ColonyClaimState.get(world)
+                    .workOrder(activeWorkOrderUuid).orElse(null);
+            if (saved != null && ColonyWorkOrderType.BUILD.id().equals(saved.type())) {
+                targetLevel = Math.max(1, Math.min(5, saved.targetLevel()));
+            }
+        }
+        return ColonyClaimState.get(world).registerBlueprintBuilding(
+                colonyUuid, world.getRegistryKey(), site, blueprintId.toString(), targetLevel,
+                blueprintId.toString(), rotation, footprint);
     }
 
     /** Activate the highest-priority queued BUILD after the current order has finished. */
