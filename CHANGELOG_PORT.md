@@ -12,3 +12,9 @@
 - Changed queued-order admission to validate all same-site conflicts before cancelling replaceable queued/blocked orders. If an active/progressed conflict rejects a request, prior queued orders remain unchanged.
 - Added a regression test with a seeded conflicting work-order history to verify the rejected request is side-effect-free.
 - Status: implementation saved in a feature-branch commit; CI result pending. No Minecraft gameplay test was run.
+
+## 2026-10-21 — Explicit work-order lifecycle transitions
+
+- Added allowed status edges to the persistent work-order store and rejected invalid transitions before mutation.
+- Added regression coverage for queue skipping directly to completion, moving active orders backward to queued, and completing blocked/paused work without resuming it.
+- Implementation is on the feature branch; CI for the exact commit is pending. No Minecraft gameplay test was run.

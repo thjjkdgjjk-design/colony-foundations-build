@@ -177,6 +177,36 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void workOrderStatusTransitionsRejectImpossibleShortcutsWithoutMutation() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(5, 63, -3).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        var initial = state.upsertWorkOrder(queued).orElseThrow();
+
+        assertTrue(state.upsertWorkOrder(initial.withStatus("completed", "")).isEmpty());
+        assertEquals("queued", state.workOrder(UUID.fromString(initial.orderId())).orElseThrow().status());
+
+        var active = state.upsertWorkOrder(initial.withStatus("active", "")).orElseThrow();
+        assertTrue(state.upsertWorkOrder(active.withStatus("queued", "")).isEmpty());
+        assertEquals("active", state.workOrder(UUID.fromString(initial.orderId())).orElseThrow().status());
+
+        var paused = state.upsertWorkOrder(active.withStatus("paused", "Paused by user")).orElseThrow();
+        assertEquals("paused", paused.status());
+        assertTrue(state.upsertWorkOrder(paused.withStatus("completed", "")).isEmpty());
+        assertEquals("paused", state.workOrder(UUID.fromString(initial.orderId())).orElseThrow().status());
+
+        assertTrue(ColonyWorkOrderStatus.BLOCKED.canTransitionTo(ColonyWorkOrderStatus.ACTIVE));
+        assertTrue(ColonyWorkOrderStatus.BLOCKED.canTransitionTo(ColonyWorkOrderStatus.CANCELLED));
+        assertFalse(ColonyWorkOrderStatus.COMPLETED.canTransitionTo(ColonyWorkOrderStatus.ACTIVE));
+        assertFalse(ColonyWorkOrderStatus.CANCELLED.canTransitionTo(ColonyWorkOrderStatus.QUEUED));
+    }
+
+    @Test
     void queueCancelStateRuleDoesNotPermitActiveOrProgressedOrders() {
         assertTrue(ColonyWorkOrderStatus.QUEUED.isTerminal() == false);
         assertFalse(ColonyWorkOrderStatus.ACTIVE.isTerminal());

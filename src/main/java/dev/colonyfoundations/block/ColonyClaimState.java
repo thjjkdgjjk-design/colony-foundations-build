@@ -358,7 +358,7 @@ public final class ColonyClaimState extends PersistentState {
             ColonyWorkOrderStatus oldStatus = ColonyWorkOrderStatus.parse(existing.status()).orElse(null);
             ColonyWorkOrderStatus newStatus = ColonyWorkOrderStatus.parse(requested.status()).orElse(null);
             if (oldStatus == null || newStatus == null) return Optional.empty();
-            if (oldStatus.isTerminal() && oldStatus != newStatus) return Optional.empty();
+            if (!oldStatus.canTransitionTo(newStatus)) return Optional.empty();
             if (!existing.blueprintId().equals(requested.blueprintId())
                     || existing.sitePosition() != requested.sitePosition()
                     || existing.rotation() != requested.rotation()
