@@ -2,6 +2,9 @@ package dev.colonyfoundations.block;
 
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -257,6 +260,59 @@ class ColonyCitizenAssignmentTest {
                 .withStatus("completed", "")).orElseThrow();
         assertEquals("completed", completed.status());
         assertTrue(state.upsertWorkOrder(completed.withStatus("active", "")).isEmpty());
+    }
+
+    @Test
+    void persistentCodecRoundTripsQueuedWorkOrdersAndReadsLegacyClaimSaves() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        BlockPos site = new BlockPos(5, 63, -3);
+        ColonyClaimState.ClaimRecord claim = new ColonyClaimState.ClaimRecord(
+                "minecraft:overworld", townHall.asLong(), ownerId.toString(), List.of(),
+                colonyId.toString(), "Codec test colony", "Owner", 2);
+        ColonyClaimState.WorkOrderRecord order = new ColonyClaimState.WorkOrderRecord(
+                orderId.toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
+                0, 1, 2, 1, 5, -3, 6, 8, "queued", 0, 3, "", ownerId.toString());
+        ColonyClaimState before = new ColonyClaimState(
+                Map.of("claim", claim), Map.of(), Map.of(), Map.of(orderId.toString(), order));
+
+        NbtElement encoded = ColonyClaimState.persistenceCodec()
+                .encodeStart(NbtOps.INSTANCE, before).result().orElseThrow();
+        ColonyClaimState restored = ColonyClaimState.persistenceCodec()
+                .parse(NbtOps.INSTANCE, encoded).result().orElseThrow();
+        ColonyClaimState.WorkOrderRecord restoredOrder =
+                restored.workOrder(orderId).orElseThrow();
+
+        assertEquals(1, restored.workOrdersForColony(colonyId).size());
+        assertEquals(8L, restoredOrder.createdSequence());
+        assertEquals(6, restoredOrder.priority());
+        assertEquals("queued", restoredOrder.status());
+        assertEquals(site.asLong(), restoredOrder.sitePosition());
+        assertEquals("colony_foundations:cottage", restoredOrder.blueprintId());
+
+        // Simulate a prior save version that predates the citizen, building and order maps,
+        // and predates the colony-identity fields on each claim record.
+        NbtCompound legacySave = (NbtCompound) encoded.copy();
+        legacySave.remove("citizens");
+        legacySave.remove("buildings");
+        legacySave.remove("work_orders");
+        NbtCompound claims = legacySave.getCompound("claims").orElseThrow();
+        NbtCompound oldClaim = claims.getCompound("claim").orElseThrow();
+        for (String key : List.of("colony_id", "colony_name", "owner_name", "colony_level", "member_permissions")) {
+            oldClaim.remove(key);
+        }
+        claims.put("claim", oldClaim);
+        legacySave.put("claims", claims);
+
+        ColonyClaimState migrated = ColonyClaimState.persistenceCodec()
+                .parse(NbtOps.INSTANCE, legacySave).result().orElseThrow();
+        assertEquals(1, migrated.nearbyClaims("minecraft:overworld", new BlockPos(79, 70, -64)).size());
+        assertTrue(migrated.colonies().isEmpty(),
+                "Legacy claims stay readable; the deterministic identity is assigned during Town Hall re-registration.");
+        assertTrue(migrated.workOrdersForColony(colonyId).isEmpty());
     }
 
     @Test

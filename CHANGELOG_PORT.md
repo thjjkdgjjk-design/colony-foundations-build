@@ -20,3 +20,9 @@
 - Implementation is on the feature branch; CI for the exact commit is pending. No Minecraft gameplay test was run.
 
 - CI follow-up: adjusted an existing completion test to use the now-enforced lifecycle sequence `queued -> active -> completed`; direct queued-to-terminal completion remains rejected. The fix awaits a fresh CI run.
+
+## 2026-10-21 — Work-order NBT persistence tests
+
+- Added an encode/parse round trip for a queued work order and a legacy-save compatibility scenario where `citizens`, `buildings`, `work_orders` and new colony identity fields are absent.
+- Exposed the existing internal `PersistentState` codec package-privately for tests; no serialization format change was introduced.
+- Status: CI pending. This test does not substitute for an actual Minecraft world restart test.

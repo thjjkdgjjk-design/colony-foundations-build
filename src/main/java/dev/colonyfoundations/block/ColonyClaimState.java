@@ -108,6 +108,11 @@ public final class ColonyClaimState extends PersistentState {
     private static final PersistentStateType<ColonyClaimState> TYPE =
             new PersistentStateType<>(STATE_ID, ColonyClaimState::new, CODEC, null);
 
+    /** Package-private codec accessor for persistence round-trip and save-migration tests. */
+    static Codec<ColonyClaimState> persistenceCodec() {
+        return CODEC;
+    }
+
     private final Map<String, ClaimRecord> claims = new LinkedHashMap<>();
     private final Map<String, Map<Long, List<ClaimRecord>>> claimsByDimensionChunk = new HashMap<>();
     /** Server-authoritative citizen assignments; keyed by the persisted entity UUID. */
