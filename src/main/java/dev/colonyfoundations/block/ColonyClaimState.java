@@ -50,6 +50,29 @@ public final class ColonyClaimState extends PersistentState {
             Codec.INT.optionalFieldOf("level", 1).forGetter(BuildingRecord::level)
     ).apply(instance, BuildingRecord::new));
 
+    private static final Codec<WorkOrderRecord> WORK_ORDER_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.STRING.fieldOf("order_id").forGetter(WorkOrderRecord::orderId),
+            Codec.STRING.fieldOf("colony_id").forGetter(WorkOrderRecord::colonyId),
+            Codec.STRING.fieldOf("dimension").forGetter(WorkOrderRecord::dimension),
+            Codec.LONG.fieldOf("town_hall_position").forGetter(WorkOrderRecord::townHallPosition),
+            Codec.LONG.fieldOf("site_position").forGetter(WorkOrderRecord::sitePosition),
+            Codec.STRING.fieldOf("blueprint_id").forGetter(WorkOrderRecord::blueprintId),
+            Codec.STRING.fieldOf("type").forGetter(WorkOrderRecord::type),
+            Codec.INT.fieldOf("current_level").forGetter(WorkOrderRecord::currentLevel),
+            Codec.INT.fieldOf("target_level").forGetter(WorkOrderRecord::targetLevel),
+            Codec.INT.fieldOf("builder_level").forGetter(WorkOrderRecord::builderLevel),
+            Codec.INT.fieldOf("rotation").forGetter(WorkOrderRecord::rotation),
+            Codec.INT.fieldOf("offset_x").forGetter(WorkOrderRecord::offsetX),
+            Codec.INT.fieldOf("offset_z").forGetter(WorkOrderRecord::offsetZ),
+            Codec.INT.optionalFieldOf("priority", 0).forGetter(WorkOrderRecord::priority),
+            Codec.LONG.optionalFieldOf("created_sequence", 0L).forGetter(WorkOrderRecord::createdSequence),
+            Codec.STRING.fieldOf("status").forGetter(WorkOrderRecord::status),
+            Codec.INT.fieldOf("progress").forGetter(WorkOrderRecord::progress),
+            Codec.INT.fieldOf("total_placements").forGetter(WorkOrderRecord::totalPlacements),
+            Codec.STRING.optionalFieldOf("issue", "").forGetter(WorkOrderRecord::issue),
+            Codec.STRING.optionalFieldOf("requested_by", "").forGetter(WorkOrderRecord::requestedBy)
+    ).apply(instance, WorkOrderRecord::new));
+
     private static final Codec<CitizenAssignment> CITIZEN_ASSIGNMENT_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("citizen_uuid").forGetter(CitizenAssignment::citizenUuid),
             Codec.STRING.fieldOf("colony_id").forGetter(CitizenAssignment::colonyId),
@@ -71,7 +94,10 @@ public final class ColonyClaimState extends PersistentState {
                     .forGetter(ColonyClaimState::citizenSnapshot),
             Codec.unboundedMap(Codec.STRING, BUILDING_CODEC)
                     .optionalFieldOf("buildings", Map.<String, BuildingRecord>of())
-                    .forGetter(ColonyClaimState::buildingSnapshot)
+                    .forGetter(ColonyClaimState::buildingSnapshot),
+            Codec.unboundedMap(Codec.STRING, WORK_ORDER_CODEC)
+                    .optionalFieldOf("work_orders", Map.<String, WorkOrderRecord>of())
+                    .forGetter(ColonyClaimState::workOrderSnapshot)
     ).apply(instance, ColonyClaimState::new));
 
     private static final PersistentStateType<ColonyClaimState> TYPE =
@@ -83,6 +109,8 @@ public final class ColonyClaimState extends PersistentState {
     private final Map<String, CitizenAssignment> citizenAssignments = new LinkedHashMap<>();
     /** Durable building directory; it remains available when building chunks are unloaded. */
     private final Map<String, BuildingRecord> buildings = new LinkedHashMap<>();
+    /** Persistent build/upgrade/repair/remove history, independent of the Town Hall chunk. */
+    private final Map<String, WorkOrderRecord> workOrders = new LinkedHashMap<>();
 
     public ColonyClaimState() {
     }
@@ -98,11 +126,18 @@ public final class ColonyClaimState extends PersistentState {
 
     ColonyClaimState(Map<String, ClaimRecord> savedClaims, Map<String, CitizenAssignment> savedCitizens,
                      Map<String, BuildingRecord> savedBuildings) {
+        this(savedClaims, savedCitizens, savedBuildings, Map.of());
+    }
+
+    ColonyClaimState(Map<String, ClaimRecord> savedClaims, Map<String, CitizenAssignment> savedCitizens,
+                     Map<String, BuildingRecord> savedBuildings, Map<String, WorkOrderRecord> savedWorkOrders) {
         if (savedClaims != null) claims.putAll(savedClaims);
         if (savedCitizens != null) citizenAssignments.putAll(savedCitizens);
         if (savedBuildings != null) buildings.putAll(savedBuildings);
+        if (savedWorkOrders != null) workOrders.putAll(savedWorkOrders);
         rebuildIndex();
         buildings.entrySet().removeIf(entry -> !isBuildingRecordAnchored(entry.getValue()));
+        workOrders.entrySet().removeIf(entry -> !isWorkOrderRecordAnchored(entry.getValue()));
     }
 
     private Map<String, ClaimRecord> claimSnapshot() {
@@ -115,6 +150,19 @@ public final class ColonyClaimState extends PersistentState {
 
     private Map<String, BuildingRecord> buildingSnapshot() {
         return Map.copyOf(buildings);
+    }
+
+    private Map<String, WorkOrderRecord> workOrderSnapshot() {
+        return Map.copyOf(workOrders);
+    }
+
+    private boolean isWorkOrderRecordAnchored(WorkOrderRecord order) {
+        if (order == null || !order.isValid()) return false;
+        UUID colonyUuid = ColonyIdentityRules.parseUuid(order.colonyId()).orElse(null);
+        if (colonyUuid == null) return false;
+        ClaimRecord colony = findColony(colonyUuid).orElse(null);
+        return colony != null && colony.dimension().equals(order.dimension())
+                && colony.center().asLong() == order.townHallPosition();
     }
 
     private boolean isBuildingRecordAnchored(BuildingRecord building) {
@@ -200,6 +248,7 @@ public final class ColonyClaimState extends PersistentState {
                         assignment.isActive() && removed.colonyId().equals(assignment.colonyId())
                                 ? assignment.withStatus("released") : assignment);
                 buildings.entrySet().removeIf(entry -> removed.colonyId().equals(entry.getValue().colonyId()));
+                workOrders.entrySet().removeIf(entry -> removed.colonyId().equals(entry.getValue().colonyId()));
             }
             rebuildIndex();
             markDirty();
@@ -280,6 +329,90 @@ public final class ColonyClaimState extends PersistentState {
         return Optional.ofNullable(building)
                 .filter(BuildingRecord::isValid)
                 .filter(this::isBuildingRecordAnchored);
+    }
+
+    /**
+     * Record or update the current order lifecycle. The order remains tied to one colony and
+     * Town Hall; terminal orders cannot be reactivated and progress can never move backwards.
+     */
+    public Optional<WorkOrderRecord> upsertWorkOrder(WorkOrderRecord requested) {
+        if (requested == null || !requested.isValid() || !isWorkOrderRecordAnchored(requested)) {
+            return Optional.empty();
+        }
+        ColonyWorkOrderType type = ColonyWorkOrderType.parse(requested.type()).orElse(null);
+        if (!ColonyWorkOrderRules.validLevelTransition(type, requested.currentLevel(),
+                requested.targetLevel(), requested.builderLevel())) return Optional.empty();
+
+        String key = requested.orderId();
+        WorkOrderRecord existing = workOrders.get(key);
+        if (existing != null) {
+            if (!existing.colonyId().equals(requested.colonyId())
+                    || !existing.dimension().equals(requested.dimension())
+                    || existing.townHallPosition() != requested.townHallPosition()) return Optional.empty();
+            ColonyWorkOrderStatus oldStatus = ColonyWorkOrderStatus.parse(existing.status()).orElse(null);
+            ColonyWorkOrderStatus newStatus = ColonyWorkOrderStatus.parse(requested.status()).orElse(null);
+            if (oldStatus == null || newStatus == null) return Optional.empty();
+            if (oldStatus.isTerminal() && oldStatus != newStatus) return Optional.empty();
+            if (!existing.blueprintId().equals(requested.blueprintId())
+                    || existing.sitePosition() != requested.sitePosition()
+                    || existing.rotation() != requested.rotation()
+                    || existing.offsetX() != requested.offsetX()
+                    || existing.offsetZ() != requested.offsetZ()) {
+                boolean replaceableQueuedOrder = oldStatus == ColonyWorkOrderStatus.QUEUED
+                        && newStatus == ColonyWorkOrderStatus.QUEUED
+                        && existing.progress() == 0 && requested.progress() == 0;
+                if (!replaceableQueuedOrder) return Optional.empty();
+            }
+            WorkOrderRecord replacement = requested.withSequence(existing.createdSequence())
+                    .withProgress(Math.max(existing.progress(), requested.progress()),
+                            Math.max(existing.totalPlacements(), requested.totalPlacements()));
+            if (!replacement.equals(existing)) {
+                workOrders.put(key, replacement);
+                markDirty();
+            }
+            return Optional.of(replacement);
+        }
+
+        for (Map.Entry<String, WorkOrderRecord> entry : workOrders.entrySet()) {
+            WorkOrderRecord competing = entry.getValue();
+            if (!competing.isValid() || !competing.colonyId().equals(requested.colonyId())
+                    || !competing.dimension().equals(requested.dimension())
+                    || competing.sitePosition() != requested.sitePosition()
+                    || ColonyWorkOrderStatus.parse(competing.status()).map(ColonyWorkOrderStatus::isTerminal).orElse(true)) continue;
+            ColonyWorkOrderStatus competingStatus = ColonyWorkOrderStatus.parse(competing.status()).orElse(null);
+            if (competing.progress() == 0 && (competingStatus == ColonyWorkOrderStatus.QUEUED
+                    || competingStatus == ColonyWorkOrderStatus.BLOCKED)) {
+                workOrders.put(entry.getKey(), competing.withStatus(ColonyWorkOrderStatus.CANCELLED.id(),
+                        "Replaced by a newer queued order"));
+            } else {
+                return Optional.empty();
+            }
+        }
+
+        long sequence = workOrders.values().stream().mapToLong(WorkOrderRecord::createdSequence).max().orElse(0L) + 1L;
+        WorkOrderRecord replacement = requested.withSequence(sequence);
+        workOrders.put(key, replacement);
+        markDirty();
+        return Optional.of(replacement);
+    }
+
+    public Optional<WorkOrderRecord> workOrder(UUID orderUuid) {
+        if (orderUuid == null) return Optional.empty();
+        return Optional.ofNullable(workOrders.get(orderUuid.toString()))
+                .filter(WorkOrderRecord::isValid)
+                .filter(this::isWorkOrderRecordAnchored);
+    }
+
+    public List<WorkOrderRecord> workOrdersForColony(UUID colonyUuid) {
+        if (colonyUuid == null) return List.of();
+        String id = colonyUuid.toString();
+        return workOrders.values().stream()
+                .filter(WorkOrderRecord::isValid)
+                .filter(this::isWorkOrderRecordAnchored)
+                .filter(order -> id.equals(order.colonyId()))
+                .sorted(java.util.Comparator.comparingInt(WorkOrderRecord::priority).reversed()
+                        .thenComparingLong(WorkOrderRecord::createdSequence))
+                .toList();
     }
 
     public List<BuildingRecord> buildingsForColony(UUID colonyUuid) {
@@ -461,6 +594,76 @@ public final class ColonyClaimState extends PersistentState {
 
     private static long chunkKey(int x, int z) {
         return ((long) x & 0xFFFF_FFFFL) << 32 | ((long) z & 0xFFFF_FFFFL);
+    }
+
+    public record WorkOrderRecord(String orderId, String colonyId, String dimension,
+                                  long townHallPosition, long sitePosition, String blueprintId,
+                                  String type, int currentLevel, int targetLevel, int builderLevel,
+                                  int rotation, int offsetX, int offsetZ, int priority,
+                                  long createdSequence, String status, int progress,
+                                  int totalPlacements, String issue, String requestedBy) {
+        public WorkOrderRecord {
+            orderId = orderId == null ? "" : orderId;
+            colonyId = colonyId == null ? "" : colonyId;
+            dimension = dimension == null ? "" : dimension;
+            blueprintId = blueprintId == null ? "" : blueprintId;
+            type = type == null ? "" : type;
+            status = status == null ? "" : status;
+            issue = issue == null ? "" : issue;
+            requestedBy = requestedBy == null ? "" : requestedBy;
+            rotation = Math.floorMod(rotation, 4);
+            offsetX = Math.max(-64, Math.min(64, offsetX));
+            offsetZ = Math.max(-64, Math.min(64, offsetZ));
+            priority = Math.max(-10, Math.min(10, priority));
+            createdSequence = Math.max(0L, createdSequence);
+            progress = Math.max(0, progress);
+            totalPlacements = Math.max(progress, Math.max(0, totalPlacements));
+            builderLevel = Math.max(1, Math.min(5, builderLevel));
+            issue = issue.length() > 512 ? issue.substring(0, 512) : issue;
+        }
+
+        public boolean isValid() {
+            return validUuid(orderId) && validUuid(colonyId)
+                    && Identifier.tryParse(dimension) != null
+                    && Identifier.tryParse(blueprintId) != null
+                    && ColonyWorkOrderType.parse(type).isPresent()
+                    && ColonyWorkOrderStatus.parse(status).isPresent()
+                    && currentLevel >= 0 && currentLevel <= 5
+                    && targetLevel >= 0 && targetLevel <= 5
+                    && builderLevel >= 1 && builderLevel <= 5
+                    && progress <= totalPlacements
+                    && (requestedBy.isBlank() || validUuid(requestedBy));
+        }
+
+        public boolean isTerminal() {
+            return ColonyWorkOrderStatus.parse(status).map(ColonyWorkOrderStatus::isTerminal).orElse(false);
+        }
+
+        public WorkOrderRecord withSequence(long sequence) {
+            return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
+                    blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
+                    priority, sequence, status, progress, totalPlacements, issue, requestedBy);
+        }
+
+        public WorkOrderRecord withProgress(int newProgress, int newTotal) {
+            return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
+                    blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
+                    priority, createdSequence, status, newProgress, newTotal, issue, requestedBy);
+        }
+
+        public WorkOrderRecord withStatus(String newStatus, String newIssue) {
+            return new WorkOrderRecord(orderId, colonyId, dimension, townHallPosition, sitePosition,
+                    blueprintId, type, currentLevel, targetLevel, builderLevel, rotation, offsetX, offsetZ,
+                    priority, createdSequence, newStatus, progress, totalPlacements, newIssue, requestedBy);
+        }
+
+        private static boolean validUuid(String value) {
+            try {
+                return value != null && !value.isBlank() && UUID.fromString(value) != null;
+            } catch (IllegalArgumentException exception) {
+                return false;
+            }
+        }
     }
 
     public record BuildingRecord(String colonyId, String dimension, long position,

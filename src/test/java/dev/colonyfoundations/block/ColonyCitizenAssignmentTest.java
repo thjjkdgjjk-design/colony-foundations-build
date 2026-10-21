@@ -63,6 +63,52 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void workOrderDirectoryTracksProgressAndRejectsUnanchoredSites() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        BlockPos site = new BlockPos(5, 63, -3);
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                orderId.toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+
+        var stored = state.upsertWorkOrder(queued).orElseThrow();
+        assertEquals(1L, stored.createdSequence());
+        assertEquals("queued", state.workOrder(orderId).orElseThrow().status());
+        var active = state.upsertWorkOrder(stored.withStatus("active", "").withProgress(2, 3)).orElseThrow();
+        assertEquals(2, active.progress());
+        assertEquals(1, state.workOrdersForColony(colonyId).size());
+
+        ColonyClaimState.WorkOrderRecord invalidSite = new ColonyClaimState.WorkOrderRecord(
+                UUID.randomUUID().toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), new BlockPos(300, 63, 0).asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        assertTrue(state.upsertWorkOrder(invalidSite).isEmpty());
+    }
+
+    @Test
+    void terminalWorkOrdersCannotBeReactivatedAndSequencesStayStable() {
+        UUID colonyId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        BlockPos townHall = new BlockPos(0, 64, 0);
+        ColonyClaimState state = stateWithColony(colonyId, ownerId, townHall);
+        BlockPos site = new BlockPos(5, 63, -3);
+        ColonyClaimState.WorkOrderRecord queued = new ColonyClaimState.WorkOrderRecord(
+                orderId.toString(), colonyId.toString(), "minecraft:overworld",
+                townHall.asLong(), site.asLong(), "colony_foundations:cottage", "build",
+                0, 1, 1, 0, 5, -3, 0, 0, "queued", 0, 3, "", ownerId.toString());
+        var stored = state.upsertWorkOrder(queued).orElseThrow();
+        var completed = state.upsertWorkOrder(stored.withProgress(3, 3)
+                .withStatus("completed", "")).orElseThrow();
+        assertEquals("completed", completed.status());
+        assertTrue(state.upsertWorkOrder(completed.withStatus("active", "")).isEmpty());
+    }
+
+    @Test
     void assignmentsRequireARegisteredBuildingWithTheMatchingJobType() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
