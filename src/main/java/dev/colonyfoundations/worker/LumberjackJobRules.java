@@ -42,6 +42,29 @@ public final class LumberjackJobRules {
         return leafBlockCount >= MIN_CANOPY_LEAVES;
     }
 
+    /** Return the vanilla sapling/propagule for a supported tree log or wood block ID. */
+    public static java.util.Optional<String> saplingBlockIdForLog(String logBlockId) {
+        if (logBlockId == null || !logBlockId.startsWith("minecraft:")) {
+            return java.util.Optional.empty();
+        }
+        String path = logBlockId.substring("minecraft:".length());
+        if (path.startsWith("stripped_")) path = path.substring("stripped_".length());
+        String wood;
+        if (path.endsWith("_log")) {
+            wood = path.substring(0, path.length() - "_log".length());
+        } else if (path.endsWith("_wood")) {
+            wood = path.substring(0, path.length() - "_wood".length());
+        } else {
+            return java.util.Optional.empty();
+        }
+        return switch (wood) {
+            case "oak", "spruce", "birch", "jungle", "acacia", "dark_oak", "cherry", "pale_oak" ->
+                    java.util.Optional.of("minecraft:" + wood + "_sapling");
+            case "mangrove" -> java.util.Optional.of("minecraft:mangrove_propagule");
+            default -> java.util.Optional.empty();
+        };
+    }
+
     public static boolean canHarvestLog(boolean axeAvailable, boolean positionInsideColony,
                                         boolean inventoryHasCapacity) {
         return axeAvailable && positionInsideColony && inventoryHasCapacity;

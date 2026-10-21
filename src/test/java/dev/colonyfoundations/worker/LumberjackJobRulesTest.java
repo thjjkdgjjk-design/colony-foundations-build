@@ -30,6 +30,22 @@ class LumberjackJobRulesTest {
     }
 
     @Test
+    void vanillaLogIdsMapToTheirMatchingSaplingsAndMangrovePropagule() {
+        assertEquals("minecraft:oak_sapling",
+                LumberjackJobRules.saplingBlockIdForLog("minecraft:oak_log").orElseThrow());
+        assertEquals("minecraft:birch_sapling",
+                LumberjackJobRules.saplingBlockIdForLog("minecraft:stripped_birch_log").orElseThrow());
+        assertEquals("minecraft:cherry_sapling",
+                LumberjackJobRules.saplingBlockIdForLog("minecraft:cherry_wood").orElseThrow());
+        assertEquals("minecraft:mangrove_propagule",
+                LumberjackJobRules.saplingBlockIdForLog("minecraft:mangrove_log").orElseThrow());
+        assertEquals("minecraft:pale_oak_sapling",
+                LumberjackJobRules.saplingBlockIdForLog("minecraft:pale_oak_log").orElseThrow());
+        assertTrue(LumberjackJobRules.saplingBlockIdForLog("modded:crystal_log").isEmpty());
+        assertTrue(LumberjackJobRules.saplingBlockIdForLog("minecraft:oak_planks").isEmpty());
+    }
+
+    @Test
     void cuttingRequiresAnAxeClaimProtectionAndInventorySpace() {
         assertTrue(LumberjackJobRules.canHarvestLog(true, true, true));
         assertFalse(LumberjackJobRules.canHarvestLog(false, true, true));

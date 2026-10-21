@@ -26,6 +26,10 @@ public final class LumberjackJobController {
 
     public static void tick(ServerWorld world, BlockPos hutPos, ColonyHutBlockEntity hut,
                             VillagerEntity worker, ColonyClaimState.ClaimRecord colony) {
+        if (hut.hasPendingLumberjackReplant()) {
+            tickPendingReplant(world, hutPos, hut, colony);
+            return;
+        }
         if (!hut.hasItemPathSuffix("_axe")) {
             CitizenJobController.maybeRequestStock(world, hutPos, "minecraft:stone_axe", 1, 4);
             return;
@@ -78,7 +82,61 @@ public final class LumberjackJobController {
             world.setBlockState(top, oldState, Block.NOTIFY_ALL);
             return;
         }
-        if (top.equals(base)) hut.clearLumberjackTree();
+        // Axes in hut storage now wear down as each log is cut. A broken tool is removed,
+        // leaving any remaining saved tree task waiting for its replacement.
+        hut.damageFirstItemPathSuffix("_axe", 1);
+        if (top.equals(base)) {
+            hut.clearLumberjackTree();
+            String saplingId = LumberjackJobRules.saplingBlockIdForLog(logId.toString()).orElse("");
+            if (!saplingId.isBlank()
+                    && Registries.BLOCK.containsId(net.minecraft.util.Identifier.tryParse(saplingId))
+                    && Registries.ITEM.containsId(net.minecraft.util.Identifier.tryParse(saplingId))) {
+                hut.queueLumberjackReplant(base, saplingId);
+                CitizenJobController.maybeRequestStock(world, hutPos, saplingId, 1, 3);
+            }
+        }
+    }
+
+    private static void tickPendingReplant(ServerWorld world, BlockPos hutPos,
+                                           ColonyHutBlockEntity hut,
+                                           ColonyClaimState.ClaimRecord colony) {
+        BlockPos target = hut.lumberjackReplantPosition().orElse(null);
+        var saplingId = net.minecraft.util.Identifier.tryParse(hut.lumberjackReplantBlockId());
+        if (target == null || saplingId == null
+                || !Registries.BLOCK.containsId(saplingId) || !Registries.ITEM.containsId(saplingId)) {
+            hut.clearLumberjackReplant();
+            return;
+        }
+        BlockPos soil = target.down();
+        if (!world.isChunkLoaded(target) || !world.isChunkLoaded(soil)) return;
+        if (!colony.contains(target)
+                || !LumberjackJobRules.isTreeGroundBlockId(
+                    Registries.BLOCK.getId(world.getBlockState(soil).getBlock()).toString())) {
+            hut.clearLumberjackReplant();
+            return;
+        }
+        BlockState existing = world.getBlockState(target);
+        if (existing.isOf(Registries.BLOCK.get(saplingId))) {
+            // Recover a save written immediately after successful planting.
+            hut.clearLumberjackReplant();
+            return;
+        }
+        if (!(existing.isAir() || existing.isReplaceable()) || !existing.getFluidState().isEmpty()) {
+            hut.clearLumberjackReplant();
+            return;
+        }
+        String itemId = saplingId.toString();
+        if (!hut.hasItem(itemId)) {
+            CitizenJobController.maybeRequestStock(world, hutPos, itemId, 1, 3);
+            return;
+        }
+        BlockState planted = Registries.BLOCK.get(saplingId).getDefaultState();
+        if (!world.setBlockState(target, planted, Block.NOTIFY_ALL)) return;
+        if (!hut.consumeItem(itemId, 1)) {
+            world.setBlockState(target, Blocks.AIR.getDefaultState(), Block.NOTIFY_ALL);
+            return;
+        }
+        hut.clearLumberjackReplant();
     }
 
     private static BlockPos findNearestTreeBase(ServerWorld world, BlockPos hutPos, int buildingLevel,

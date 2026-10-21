@@ -59,6 +59,10 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     /** Persisted root of the tree currently being felled; survives chunk unload/restart. */
     private boolean lumberjackTreeActive;
     private long lumberjackTreeBasePosition;
+    /** A finished tree remains queued for replanting until a sapling is delivered or planted. */
+    private boolean lumberjackReplantPending;
+    private long lumberjackReplantPosition;
+    private String lumberjackReplantBlockId = "";
     private static final int MAX_TRANSFER_RECEIPTS = 4096;
     private final LinkedHashMap<String, TransferReceipt> outboundTransferReceipts = new LinkedHashMap<>();
     private final LinkedHashMap<String, String> appliedTransferReceipts = new LinkedHashMap<>();
@@ -106,6 +110,59 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         lumberjackTreeActive = false;
         lumberjackTreeBasePosition = 0L;
         markDirty();
+    }
+
+    public boolean hasPendingLumberjackReplant() {
+        return lumberjackReplantPending;
+    }
+
+    public Optional<BlockPos> lumberjackReplantPosition() {
+        return lumberjackReplantPending
+                ? Optional.of(BlockPos.fromLong(lumberjackReplantPosition))
+                : Optional.empty();
+    }
+
+    public String lumberjackReplantBlockId() {
+        return lumberjackReplantBlockId;
+    }
+
+    public void queueLumberjackReplant(BlockPos position, String blockId) {
+        if (position == null || Identifier.tryParse(blockId) == null) return;
+        lumberjackTreeActive = false;
+        lumberjackTreeBasePosition = 0L;
+        lumberjackReplantPending = true;
+        lumberjackReplantPosition = position.asLong();
+        lumberjackReplantBlockId = blockId;
+        markDirty();
+    }
+
+    public void clearLumberjackReplant() {
+        if (!lumberjackReplantPending) return;
+        lumberjackReplantPending = false;
+        lumberjackReplantPosition = 0L;
+        lumberjackReplantBlockId = "";
+        markDirty();
+    }
+
+    /** Damage the first matching tool in hut inventory; a broken tool is removed. */
+    public boolean damageFirstItemPathSuffix(String suffix, int damage) {
+        if (suffix == null || suffix.isBlank() || damage <= 0) return false;
+        for (int slot = 0; slot < inventory.size(); slot++) {
+            ItemStack stack = inventory.get(slot);
+            if (stack.isEmpty()
+                    || !Registries.ITEM.getId(stack.getItem()).getPath().endsWith(suffix)) continue;
+            if (stack.isDamageable()) {
+                int nextDamage = stack.getDamage() + damage;
+                if (nextDamage >= stack.getMaxDamage()) {
+                    inventory.set(slot, ItemStack.EMPTY);
+                } else {
+                    stack.setDamage(nextDamage);
+                }
+            }
+            markDirty();
+            return true;
+        }
+        return false;
     }
 
     public boolean isAssignedWorker(VillagerEntity villager) {
@@ -647,6 +704,11 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         nbt.putInt("CourierCargoCount", courierCargoCount);
         nbt.putBoolean("LumberjackTreeActive", lumberjackTreeActive);
         if (lumberjackTreeActive) nbt.putLong("LumberjackTreeBasePosition", lumberjackTreeBasePosition);
+        nbt.putBoolean("LumberjackReplantPending", lumberjackReplantPending);
+        if (lumberjackReplantPending) {
+            nbt.putLong("LumberjackReplantPosition", lumberjackReplantPosition);
+            nbt.putString("LumberjackReplantBlockId", lumberjackReplantBlockId);
+        }
         NbtCompound applied = new NbtCompound();
         appliedTransferReceipts.forEach(applied::putString);
         nbt.put("AppliedTransferReceipts", applied);
@@ -683,6 +745,17 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         lumberjackTreeActive = nbt.getBoolean("LumberjackTreeActive").orElse(false);
         lumberjackTreeBasePosition = lumberjackTreeActive
                 ? nbt.getLong("LumberjackTreeBasePosition").orElse(0L) : 0L;
+        lumberjackReplantPending = nbt.getBoolean("LumberjackReplantPending").orElse(false);
+        lumberjackReplantPosition = lumberjackReplantPending
+                ? nbt.getLong("LumberjackReplantPosition").orElse(0L) : 0L;
+        lumberjackReplantBlockId = lumberjackReplantPending
+                ? nbt.getString("LumberjackReplantBlockId").orElse("") : "";
+        if (lumberjackReplantPending
+                && Identifier.tryParse(lumberjackReplantBlockId) == null) {
+            lumberjackReplantPending = false;
+            lumberjackReplantPosition = 0L;
+            lumberjackReplantBlockId = "";
+        }
         if (courierCargoCount == 0 || Identifier.tryParse(courierCargoItemId) == null) {
             courierCargoItemId = "";
             courierCargoCount = 0;
