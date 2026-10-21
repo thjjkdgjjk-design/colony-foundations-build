@@ -49,3 +49,11 @@
 - The action replaces one log with air, commits one matching item to hut inventory, and restores the original block if insertion unexpectedly fails. The current tree base is persisted in hut NBT to resume after reload.
 - Added unit tests for search-radius bounds, eligible soil/trunk sizes, canopy thresholds and harvest prerequisites.
 - No in-game test has been performed. Connected tree traversal, leaf/sapling collection, replanting, modded trees and axe durability remain unimplemented.
+
+
+## 2026-10-21 — Persisted sapling replanting and axe wear
+
+- Added a durable replant-pending state to hut NBT; after the last trunk block is harvested, the worker queues the corresponding supported vanilla sapling/propagule and retries planting after it is already stored or delivered through the existing request path.
+- The replant task survives hut/world reload and is cleared after planting, a conflicting block/soil, or a stale target makes the operation invalid.
+- Each harvested log consumes one durability point from the first axe in hut storage; a broken tool is removed and further work waits for a replacement.
+- Added unit coverage for supported vanilla log-to-sapling mappings and rejection of unsupported/modded IDs. CI passed; no in-game verification was performed.
