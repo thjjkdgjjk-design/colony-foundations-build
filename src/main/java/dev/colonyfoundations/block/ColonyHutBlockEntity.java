@@ -56,6 +56,9 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
     private long courierTargetPosition;
     private String courierCargoItemId = "";
     private int courierCargoCount;
+    /** Persisted root of the tree currently being felled; survives chunk unload/restart. */
+    private boolean lumberjackTreeActive;
+    private long lumberjackTreeBasePosition;
     private static final int MAX_TRANSFER_RECEIPTS = 4096;
     private final LinkedHashMap<String, TransferReceipt> outboundTransferReceipts = new LinkedHashMap<>();
     private final LinkedHashMap<String, String> appliedTransferReceipts = new LinkedHashMap<>();
@@ -81,6 +84,28 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
 
     public Optional<UUID> assignedCitizen() {
         return Optional.ofNullable(assignedCitizen);
+    }
+
+    public Optional<BlockPos> lumberjackTreeBase() {
+        return lumberjackTreeActive
+                ? Optional.of(BlockPos.fromLong(lumberjackTreeBasePosition))
+                : Optional.empty();
+    }
+
+    public boolean beginLumberjackTree(BlockPos base) {
+        if (base == null) return false;
+        if (lumberjackTreeActive) return lumberjackTreeBasePosition == base.asLong();
+        lumberjackTreeBasePosition = base.asLong();
+        lumberjackTreeActive = true;
+        markDirty();
+        return true;
+    }
+
+    public void clearLumberjackTree() {
+        if (!lumberjackTreeActive) return;
+        lumberjackTreeActive = false;
+        lumberjackTreeBasePosition = 0L;
+        markDirty();
     }
 
     public boolean isAssignedWorker(VillagerEntity villager) {
@@ -620,6 +645,8 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         nbt.putLong("CourierTargetPosition", courierTargetPosition);
         nbt.putString("CourierCargoItemId", courierCargoItemId);
         nbt.putInt("CourierCargoCount", courierCargoCount);
+        nbt.putBoolean("LumberjackTreeActive", lumberjackTreeActive);
+        if (lumberjackTreeActive) nbt.putLong("LumberjackTreeBasePosition", lumberjackTreeBasePosition);
         NbtCompound applied = new NbtCompound();
         appliedTransferReceipts.forEach(applied::putString);
         nbt.put("AppliedTransferReceipts", applied);
@@ -653,6 +680,9 @@ public final class ColonyHutBlockEntity extends BlockEntity implements Inventory
         courierTargetPosition = nbt.getLong("CourierTargetPosition").orElse(0L);
         courierCargoItemId = nbt.getString("CourierCargoItemId").orElse("");
         courierCargoCount = Math.max(0, Math.min(64, nbt.getInt("CourierCargoCount").orElse(0)));
+        lumberjackTreeActive = nbt.getBoolean("LumberjackTreeActive").orElse(false);
+        lumberjackTreeBasePosition = lumberjackTreeActive
+                ? nbt.getLong("LumberjackTreeBasePosition").orElse(0L) : 0L;
         if (courierCargoCount == 0 || Identifier.tryParse(courierCargoItemId) == null) {
             courierCargoItemId = "";
             courierCargoCount = 0;

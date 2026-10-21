@@ -18,6 +18,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.tag.BlockTags;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -56,6 +57,7 @@ public final class CitizenJobController {
         switch (hut.hutId()) {
             case "hut_farmer" -> tickFarmer(world, hutPos, hut, worker);
             case "hut_deliveryman" -> tickCourier(world, hutPos, hut, worker);
+            case "hut_lumberjack" -> LumberjackJobController.tick(world, hutPos, hut, worker, colony);
             default -> {
                 // Other profession routines remain explicitly unimplemented.
             }
@@ -335,7 +337,7 @@ public final class CitizenJobController {
 
     private static final int COURIER_SEARCH_RADIUS = 16;
 
-    private static void maybeRequestStock(ServerWorld world, BlockPos targetHut,
+    static void maybeRequestStock(ServerWorld world, BlockPos targetHut,
                                           String itemId, int amount, int priority) {
         Identifier item = Identifier.tryParse(itemId);
         if (item == null || !Registries.ITEM.containsId(item)) return;
