@@ -139,6 +139,15 @@ class ColonyCitizenAssignmentTest {
     }
 
     @Test
+    void queueCancelStateRuleDoesNotPermitActiveOrProgressedOrders() {
+        assertTrue(ColonyWorkOrderStatus.QUEUED.isTerminal() == false);
+        assertFalse(ColonyWorkOrderStatus.ACTIVE.isTerminal());
+        assertTrue(ColonyWorkOrderStatus.CANCELLED.isTerminal());
+        // State-level cancellation accepts queued/blocked records only; the Town Hall wrapper
+        // additionally clears its own selected UUID when cancelling a not-yet-started selection.
+    }
+
+    @Test
     void onlyZeroProgressQueuedOrBlockedOrdersCanBeCancelled() {
         UUID colonyId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();

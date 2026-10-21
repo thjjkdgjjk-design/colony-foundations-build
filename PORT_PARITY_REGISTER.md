@@ -138,3 +138,5 @@ MineColonies source code has a GPL-3.0 project license, but its resource directo
 - Queue compile-review correction: both work-order blueprint parsers now treat Identifier.tryParse as nullable (Fabric/Yarn 1.21.5 mapping), instead of calling Optional.orElse. This is a defensive pre-CI correction to the queued multi-BUILD scheduler commit; current-head CI remains authoritative.
 
 - Work-order management addendum (current commit pending CI): `/colony order-priority` can edit only an unstarted queued order; `/colony order-cancel` can cancel only queued/blocked orders with zero progress. Active/progressed orders cannot be cancelled or reprioritized. Unit tests cover the state rules. UPGRADE/REPAIR/REMOVE still lack execution pipelines.
+
+- Queue cancellation safety correction: `/colony order-cancel` now routes through the Town Hall and refuses orders belonging to another Town Hall, active orders, completed orders or any order with progress. Cancelling the selected but not-started order clears the Town Hall's selected UUID so the scheduler can advance instead of leaving a terminal UUID attached. This correction is pending CI.

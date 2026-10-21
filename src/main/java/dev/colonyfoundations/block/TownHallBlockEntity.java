@@ -289,6 +289,32 @@ public final class TownHallBlockEntity extends BlockEntity {
      * executing in this Town Hall. The inventory remains shared; deposits account for every
      * queued BUILD order, while the single executor runs one order at a time.
      */
+    /**
+     * Cancel a selected/queued order only when it has not started placing blocks.
+     * If this was the Town Hall's currently selected queued order, detach its UUID so the
+     * scheduler can promote the next eligible order on its next tick.
+     */
+    public boolean cancelQueuedWorkOrder(long sequence, ServerPlayerEntity player) {
+        if (!canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)
+                || colonyUuid == null || !(player.getWorld() instanceof ServerWorld serverWorld)) return false;
+        ColonyClaimState directory = ColonyClaimState.get(serverWorld);
+        ColonyClaimState.WorkOrderRecord target = directory.workOrdersForColony(colonyUuid).stream()
+                .filter(order -> order.createdSequence() == sequence)
+                .filter(order -> order.townHallPosition() == pos.asLong())
+                .findFirst().orElse(null);
+        if (target == null) return false;
+        boolean isSelected = activeWorkOrderUuid != null && activeWorkOrderUuid.toString().equals(target.orderId());
+        if (isSelected && (projectActive || projectComplete || progress > 0)) return false;
+        if (directory.cancelUnstartedWorkOrder(colonyUuid, sequence).isEmpty()) return false;
+        if (isSelected) {
+            activeWorkOrderUuid = null;
+            projectRequestedByUuid = "";
+            projectIssue = "";
+        }
+        markDirty();
+        return true;
+    }
+
     public boolean queueBuildOrder(Identifier requestedBlueprint, int quarterTurns,
                                    int requestedOffsetX, int requestedOffsetZ, int priority,
                                    ServerPlayerEntity player) {

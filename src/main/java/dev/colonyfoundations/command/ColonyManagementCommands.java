@@ -167,10 +167,8 @@ public final class ColonyManagementCommands {
             player.sendMessage(Text.literal("You need build_projects permission to manage work orders."), true);
             return 0;
         }
-        if (!(player.getWorld() instanceof ServerWorld serverWorld) || hall.colonyUuid() == null) return 0;
-        var cancelled = ColonyClaimState.get(serverWorld).cancelUnstartedWorkOrder(hall.colonyUuid(), sequence);
-        if (cancelled.isEmpty()) {
-            player.sendMessage(Text.literal("Only queued/blocked orders with zero progress can be cancelled."), true);
+        if (!hall.cancelQueuedWorkOrder(sequence, player)) {
+            player.sendMessage(Text.literal("Only a queued/blocked zero-progress order belonging to this Town Hall can be cancelled; active or progressed orders are protected."), true);
             return 0;
         }
         player.sendMessage(Text.literal("Cancelled work order #" + sequence + "."), false);
