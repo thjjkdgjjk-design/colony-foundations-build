@@ -469,7 +469,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             for (ColonyClaimState.WorkOrderRecord order
                     : ColonyClaimState.get(serverWorld).workOrdersForColony(colonyUuid)) {
                 if (order.isTerminal() || !ColonyWorkOrderType.BUILD.id().equals(order.type())) continue;
-                Identifier orderBlueprintId = Identifier.tryParse(order.blueprintId()).orElse(null);
+                Identifier orderBlueprintId = Identifier.tryParse(order.blueprintId());
                 BlueprintDefinition definition = orderBlueprintId == null ? null
                         : BlueprintRegistry.getBuildDefinition(orderBlueprintId).orElse(null);
                 if (definition == null) continue;
@@ -894,7 +894,7 @@ public final class TownHallBlockEntity extends BlockEntity {
                     || !ColonyWorkOrderType.BUILD.id().equals(order.type())
                     || order.townHallPosition() != hallPos.asLong()) continue;
 
-            Identifier nextBlueprintId = Identifier.tryParse(order.blueprintId()).orElse(null);
+            Identifier nextBlueprintId = Identifier.tryParse(order.blueprintId());
             BlueprintDefinition definition = nextBlueprintId == null ? null
                     : BlueprintRegistry.getBuildDefinition(nextBlueprintId).orElse(null);
             if (definition == null || definition.placements().isEmpty()
