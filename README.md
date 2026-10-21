@@ -39,3 +39,8 @@ This is an incremental per-member action model. MineColonies shared rank presets
 - Supported local actions: `break_blocks`, `place_blocks`, `use_blocks`, `manage_members`, `build_projects`, `assign_workers`.
 
 The model persists `OWNER/OFFICER/FRIEND/NEUTRAL/HOSTILE` rank IDs and profile actions. This is not full MineColonies permission parity: upstream actions beyond the six enforced here, alliance/hostile interaction, and the Town Hall permissions GUI remain open. Old saves without a permission-version marker migrate existing members to `officer` to preserve the prior broad access; intermediate saves keep explicit grants until the affected rank profile is edited.
+
+
+### Durable work-order history (experimental)
+
+The current Town Hall BUILD project now mirrors its order ID, blueprint, site, rotation, requester, lifecycle status, progress and obstruction reason into the world-persistent colony directory. Use `/colony work-orders <x> <y> <z>` near the Town Hall to inspect recorded orders (requires `build_projects`). This is a history/state foundation, not a full queue: BUILD still uses the single existing Town Hall executor; actual UPGRADE, REPAIR and REMOVE execution, parallel orders, priorities in scheduling, and building-module workflows remain unimplemented.

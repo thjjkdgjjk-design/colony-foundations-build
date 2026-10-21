@@ -59,6 +59,10 @@ public final class TownHallBlockEntity extends BlockEntity {
     /** Last durable reason construction paused; empty when no known blocker exists. */
     private String projectIssue = "";
     private UUID assignedBuilderUuid;
+    /** Durable identifier for the current Town Hall BUILD work order. */
+    private UUID activeWorkOrderUuid;
+    private String projectRequestedByUuid = "";
+    private long lastWorkOrderSyncWarning = -1000L;
     private BlockPos lastBuilderPosition;
     private long lastBuilderUnavailableNotification = -1000L;
     // Transient navigation diagnostics; these reset after a world reload.
@@ -295,13 +299,20 @@ public final class TownHallBlockEntity extends BlockEntity {
             return;
         }
 
-        boolean resumeSame = BuildResumeRules.shouldResume(
+        boolean resumeQueuedSelection = activeWorkOrderUuid != null
+                && blueprintId.equals(newBlueprintId) && !projectActive && !projectComplete
+                && progress == 0 && projectIssue.isBlank();
+        boolean resumeSame = resumeQueuedSelection || BuildResumeRules.shouldResume(
                 blueprintId, newBlueprintId, projectActive, progress, projectComplete, projectIssue);
         if (resumeSame) {
+            if (activeWorkOrderUuid == null) activeWorkOrderUuid = UUID.randomUUID();
+            if (projectRequestedByUuid.isBlank()) projectRequestedByUuid = player.getUuid().toString();
             // Resuming a partially built structure must keep its saved orientation and site.
             projectActive = true;
             projectIssue = "";
         } else {
+            activeWorkOrderUuid = UUID.randomUUID();
+            projectRequestedByUuid = player.getUuid().toString();
             blueprintId = newBlueprintId;
             rotation = Math.floorMod(quarterTurns, 4);
             siteOffsetX = clampSiteOffset(requestedOffsetX);
@@ -314,6 +325,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         }
         markDirty();
         int moved = depositMaterials(player);
+        if (player.getWorld() instanceof ServerWorld serverWorld) syncWorkOrder(serverWorld, pos);
         player.sendMessage(Text.literal("[Колония] Заказано: " + definition.title() + ". Блоков: "
                 + definition.placements().size() + ". Поворот: " + (rotation * 90)
                 + "°. В склад ратуши добавлено предметов: " + moved + "."), false);
@@ -336,8 +348,11 @@ public final class TownHallBlockEntity extends BlockEntity {
                 rotation = Math.floorMod(requestedRotation, 4);
                 siteOffsetX = clampSiteOffset(requestedOffsetX);
                 siteOffsetZ = clampSiteOffset(requestedOffsetZ);
+                if (activeWorkOrderUuid == null) activeWorkOrderUuid = UUID.randomUUID();
+                if (projectRequestedByUuid.isBlank()) projectRequestedByUuid = player.getUuid().toString();
             }
             int moved = depositMaterials(player);
+            syncWorkOrder(player.getServerWorld(), pos);
             player.sendMessage(Text.literal("[Колония] В ратушу перенесено предметов: " + moved
                     + ". Запас стройки обновлён."), true);
             notifyCompatibilityWarnings(selectedDefinition, player);
@@ -353,6 +368,8 @@ public final class TownHallBlockEntity extends BlockEntity {
             player.sendMessage(Text.literal("[Колония] Чертёж не найден."), true);
             return;
         }
+        activeWorkOrderUuid = UUID.randomUUID();
+        projectRequestedByUuid = player.getUuid().toString();
         blueprintId = requestedBlueprint;
         rotation = Math.floorMod(requestedRotation, 4);
         siteOffsetX = clampSiteOffset(requestedOffsetX);
@@ -361,6 +378,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectComplete = false;
         int moved = depositMaterials(player);
         markDirty();
+        syncWorkOrder(player.getServerWorld(), pos);
         player.sendMessage(Text.literal("[Колония] Выбрана схема «" + definition.title()
                 + "». Перенесено предметов: " + moved + ". Чтобы начать стройку, нажми соответствующую кнопку."), true);
         notifyCompatibilityWarnings(definition, player);
@@ -454,6 +472,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             projectActive = false;
             projectIssue = "Сохранённый чертёж недоступен: " + blueprintId;
             markDirty();
+            if (player.getWorld() instanceof ServerWorld serverWorld) syncWorkOrder(serverWorld, pos);
             player.sendMessage(Text.literal("[Колония] Нельзя возобновить стройку: сохранённая схема недоступна. Восстановите datapack или файл схемы."), true);
             return;
         }
@@ -464,6 +483,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectActive = !projectActive;
         projectIssue = projectActive ? "" : "Приостановлено пользователем";
         markDirty();
+        if (player.getWorld() instanceof ServerWorld serverWorld) syncWorkOrder(serverWorld, pos);
         player.sendMessage(Text.literal("[Колония] Строительство " + (projectActive ? "возобновлено" : "приостановлено")
                 + ": " + progress + "/" + definition.placements().size()), true);
     }
@@ -471,8 +491,9 @@ public final class TownHallBlockEntity extends BlockEntity {
     public static void tick(World world, BlockPos pos, BlockState state, TownHallBlockEntity hall) {
         if (world.isClient || !(world instanceof ServerWorld serverWorld)) return;
         ColonyProtection.registerTownHall(serverWorld, pos);
-        if (!hall.projectActive) return;
         if (serverWorld.getTime() % 10L != 0L) return;
+        hall.syncWorkOrder(serverWorld, pos);
+        if (!hall.projectActive) return;
 
         BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(hall.blueprintId).orElse(null);
         if (definition == null) {
@@ -626,6 +647,7 @@ public final class TownHallBlockEntity extends BlockEntity {
             hall.progress++;
             hall.projectIssue = "";
             hall.markDirty();
+            hall.syncWorkOrder(serverWorld, pos);
             if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
             return;
         }
@@ -658,6 +680,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         hall.progress++;
         hall.projectIssue = "";
         hall.markDirty();
+        hall.syncWorkOrder(serverWorld, pos);
         if (hall.progress >= plan.size()) hall.finish(serverWorld, builder);
     }
 
@@ -705,6 +728,7 @@ public final class TownHallBlockEntity extends BlockEntity {
         projectActive = false;
         projectIssue = reason;
         markDirty();
+        syncWorkOrder(world, hallPos);
         Text message = Text.literal("[Колония] Строительство приостановлено: " + reason
                 + ". Координаты: " + target.getX() + ", " + target.getY() + ", " + target.getZ()
                 + ". Устраните причину и возобновите заказ.");
@@ -780,8 +804,48 @@ public final class TownHallBlockEntity extends BlockEntity {
         lastBuilderPosition = null;
         resetNavigationDiagnostics();
         markDirty();
+        syncWorkOrder(world, pos);
         ColonyFoundations.LOGGER.info("Blueprint {} completed at {} in dimension {} ({} obstructed cells skipped).",
                 blueprintId, pos, world.getRegistryKey().getValue(), skippedObstructions);
+    }
+
+    /**
+     * Mirror the currently executable Town Hall build order into persistent colony history.
+     * The Town Hall remains the executor; this durable record is the first integration step
+     * toward the upstream WorkManager and multi-order scheduler.
+     */
+    private void syncWorkOrder(ServerWorld serverWorld, BlockPos hallPos) {
+        boolean hasOrder = activeWorkOrderUuid != null || projectActive || projectComplete
+                || progress > 0 || !projectIssue.isBlank();
+        if (!hasOrder || colonyUuid == null) return;
+        if (activeWorkOrderUuid == null) {
+            activeWorkOrderUuid = UUID.randomUUID();
+            markDirty();
+        }
+
+        BlueprintDefinition definition = BlueprintRegistry.getBuildDefinition(blueprintId).orElse(null);
+        int total = Math.max(progress, definition == null ? 0 : definition.placements().size());
+        String status = projectComplete ? ColonyWorkOrderStatus.COMPLETED.id()
+                : projectActive ? ColonyWorkOrderStatus.ACTIVE.id()
+                : "Приостановлено пользователем".equals(projectIssue) ? ColonyWorkOrderStatus.PAUSED.id()
+                : !projectIssue.isBlank() ? ColonyWorkOrderStatus.BLOCKED.id()
+                : progress > 0 ? ColonyWorkOrderStatus.PAUSED.id()
+                : ColonyWorkOrderStatus.QUEUED.id();
+        BlockPos site = hallPos.add(siteOffsetX, -1, siteOffsetZ);
+        ColonyClaimState.WorkOrderRecord draft = new ColonyClaimState.WorkOrderRecord(
+                activeWorkOrderUuid.toString(), colonyUuid.toString(),
+                serverWorld.getRegistryKey().getValue().toString(), hallPos.asLong(), site.asLong(),
+                blueprintId.toString(), ColonyWorkOrderType.BUILD.id(), 0, 1,
+                Math.max(1, Math.min(5, colonyLevel)), rotation, siteOffsetX, siteOffsetZ,
+                0, 0L, status, progress, total, projectIssue, projectRequestedByUuid);
+        var stored = ColonyClaimState.get(serverWorld).upsertWorkOrder(draft);
+        if (stored.isEmpty() && serverWorld.getTime() - lastWorkOrderSyncWarning >= 100L) {
+            lastWorkOrderSyncWarning = serverWorld.getTime();
+            ColonyFoundations.LOGGER.warn("Could not persist BUILD work order {} for colony {} at {}",
+                    activeWorkOrderUuid, colonyUuid, hallPos);
+        } else if (stored.isPresent()) {
+            activeWorkOrderUuid = UUID.fromString(stored.get().orderId());
+        }
     }
 
     private static String assignmentTag(ServerWorld world, BlockPos pos) {
@@ -794,6 +858,8 @@ public final class TownHallBlockEntity extends BlockEntity {
         super.writeNbt(nbt, registries);
         nbt.putBoolean("ProjectActive", projectActive);
         nbt.putBoolean("ProjectComplete", projectComplete);
+        if (activeWorkOrderUuid != null) nbt.putString("ActiveWorkOrderUuid", activeWorkOrderUuid.toString());
+        nbt.putString("ProjectRequestedByUuid", projectRequestedByUuid);
         nbt.putInt("Progress", progress);
         nbt.putInt("SkippedObstructions", skippedObstructions);
         nbt.putString("BlueprintId", blueprintId.toString());
@@ -856,6 +922,10 @@ public final class TownHallBlockEntity extends BlockEntity {
         super.readNbt(nbt, registries);
         projectActive = nbt.getBoolean("ProjectActive").orElse(false);
         projectComplete = nbt.getBoolean("ProjectComplete").orElse(false);
+        activeWorkOrderUuid = ColonyIdentityRules.parseUuid(
+                nbt.getString("ActiveWorkOrderUuid").orElse("")).orElse(null);
+        projectRequestedByUuid = ColonyIdentityRules.parseUuid(
+                nbt.getString("ProjectRequestedByUuid").orElse("")).map(UUID::toString).orElse("");
         progress = Math.max(0, nbt.getInt("Progress").orElse(0));
         skippedObstructions = Math.max(0, nbt.getInt("SkippedObstructions").orElse(0));
         Identifier parsed = Identifier.tryParse(nbt.getString("BlueprintId").orElse("colony_foundations:cottage"));

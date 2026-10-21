@@ -84,6 +84,11 @@ public final class ColonyManagementCommands {
             rankCommand.then(rankHall);
             root.then(rankCommand);
 
+            root.then(literal("work-orders")
+                    .then(argument("hall", BlockPosArgumentType.blockPos())
+                            .executes(context -> listWorkOrders(context.getSource(),
+                                    BlockPosArgumentType.getBlockPos(context, "hall")))));
+
             var rankPermissionCommand = literal("rank-permission");
             var rankPermissionHall = argument("hall", BlockPosArgumentType.blockPos());
             var rankPermissionRank = argument("rank", StringArgumentType.word());
@@ -102,6 +107,33 @@ public final class ColonyManagementCommands {
 
             dispatcher.register(root);
         });
+    }
+
+    private static int listWorkOrders(ServerCommandSource source, BlockPos pos)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayerEntity player = source.getPlayerOrThrow();
+        TownHallBlockEntity hall = getHall(source, player, pos);
+        if (hall == null || !hall.canPerformColonyAction(player, ColonyPermission.BUILD_PROJECTS)) {
+            player.sendMessage(Text.literal("You need build_projects permission to view colony work orders."), true);
+            return 0;
+        }
+        if (!(player.getWorld() instanceof ServerWorld serverWorld) || hall.colonyUuid() == null) {
+            player.sendMessage(Text.literal("This Town Hall has not founded a persistent colony."), true);
+            return 0;
+        }
+        var orders = ColonyClaimState.get(serverWorld).workOrdersForColony(hall.colonyUuid());
+        player.sendMessage(Text.literal("Colony work orders (" + orders.size() + "):"), false);
+        for (var order : orders.stream().limit(10).toList()) {
+            String line = "#" + order.createdSequence() + " " + order.type() + "/" + order.status()
+                    + " " + order.blueprintId() + " " + order.progress() + "/" + order.totalPlacements()
+                    + " at " + BlockPos.fromLong(order.sitePosition()).toShortString()
+                    + (order.issue().isBlank() ? "" : " — " + order.issue());
+            player.sendMessage(Text.literal(line), false);
+        }
+        if (orders.isEmpty()) {
+            player.sendMessage(Text.literal("No work orders have been recorded for this colony."), false);
+        }
+        return 1;
     }
 
     private static int showInfo(ServerCommandSource source, BlockPos pos) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
