@@ -149,14 +149,12 @@ public final class LumberjackJobController {
         BlockPos top = base;
         for (int height = 1; height < LumberjackJobRules.MAX_TREE_HEIGHT; height++) {
             BlockPos next = base.up(height);
-            if (next.getY() >= world.getTopY()) return top;
             if (!world.isChunkLoaded(next)) return null;
             if (!world.getBlockState(next).isIn(BlockTags.LOGS)) return top;
             top = next;
         }
         BlockPos above = top.up();
-        if (above.getY() < world.getTopY() && world.isChunkLoaded(above)
-                && world.getBlockState(above).isIn(BlockTags.LOGS)) return null;
+        if (world.isChunkLoaded(above) && world.getBlockState(above).isIn(BlockTags.LOGS)) return null;
         return top;
     }
 }
