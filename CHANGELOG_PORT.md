@@ -40,3 +40,12 @@
 - Persisted active work-order type/current level/target level in Town Hall NBT and updated scheduler/sync to preserve REPAIR rather than rewriting it as BUILD.
 - The shared builder executor repairs missing/replaceable cells and skips correct cells; a solid mismatch blocks rather than overwrites. Builder capability uses colony level as a temporary proxy until original Builder Hut/job-skill semantics exist.
 - Added state regression coverage for target-footprint exclusion and repair level semantics. No gameplay test has been run.
+
+
+## 2026-10-21 — Conservative lumberjack work cycle
+
+- Integrated hut_lumberjack into the server-side citizen job controller.
+- The worker requires an axe in hut storage, searches only loaded chunks inside the colony claim for vertical trunks on supported soil with a nearby canopy, and moves to the trunk's highest log.
+- The action replaces one log with air, commits one matching item to hut inventory, and restores the original block if insertion unexpectedly fails. The current tree base is persisted in hut NBT to resume after reload.
+- Added unit tests for search-radius bounds, eligible soil/trunk sizes, canopy thresholds and harvest prerequisites.
+- No in-game test has been performed. Connected tree traversal, leaf/sapling collection, replanting, modded trees and axe durability remain unimplemented.

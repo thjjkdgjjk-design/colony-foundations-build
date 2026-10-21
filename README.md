@@ -55,3 +55,8 @@ The current Town Hall BUILD project now mirrors its order ID, blueprint, site, r
 
 - `/colony order-priority <x> <y> <z> <sequence> <priority -10..10>` changes the priority of an unstarted queued order.
 - `/colony order-cancel <x> <y> <z> <sequence>` cancels only a queued/blocked order with zero placed blocks; active/progressed orders are protected.
+
+
+### Lumberjack (experimental partial worker)
+
+A villager can be assigned to hut_lumberjack using worker_contract. Put an axe in the hut inventory; the worker searches for vertical tree trunks with leaves, within the colony claim and in loaded chunks, then stores harvested logs in hut storage. The current tree base is saved in hut NBT. Branch traversal, leaves/saplings, replanting, modded trees and axe durability are not implemented. See PLAYTEST.md.
