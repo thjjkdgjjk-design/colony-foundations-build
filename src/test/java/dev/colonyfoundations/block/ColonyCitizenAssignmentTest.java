@@ -309,8 +309,10 @@ class ColonyCitizenAssignmentTest {
                 colonyId.toString(), "minecraft:overworld", site.asLong(),
                 "colony_foundations:cottage", 2, "colony_foundations:cottage", 1,
                 new BlockPos(3, 62, -5).asLong(), new BlockPos(7, 70, 0).asLong());
+        String structureKey = "minecraft:overworld#"
+                + Long.toUnsignedString(site.asLong(), 16);
         ColonyClaimState before = new ColonyClaimState(
-                Map.of("claim", claim), Map.of(), Map.of("structure", structure),
+                Map.of("claim", claim), Map.of(), Map.of(structureKey, structure),
                 Map.of(orderId.toString(), order));
 
         NbtElement encoded = ColonyClaimState.persistenceCodec()
